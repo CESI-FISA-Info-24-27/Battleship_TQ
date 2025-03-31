@@ -31,12 +31,12 @@ Le jeu permet à deux joueurs de :
 ## 📅 Organisation
 
 Ce projet a été réalisé sur une **durée de 5 jours** avec une répartition claire des tâches :
-- 📌 **Théo Sutra** : (à compléter selon ce qu’il a fait, ex. logique serveur, gestion des connexions)
-- 📌 **Quentin Joly** : (à compléter, ex. interface utilisateur, moteur de jeu)
+- 📌 **Théo Sutra** : Développement Back-end et gestion du projet
+- 📌 **Quentin Joly** : Développement Front-end et réseau
 
 ## 📝 Pour lancer le projet
 
 ### 1. Cloner le dépôt
 
 ```bash
-git clone https://github.com/votre-utilisateur/bataille-navale-en-ligne.git
+[git clone https://github.com/votre-utilisateur/bataille-navale-en-ligne.git](https://github.com/CESI-FISA-Info-24-27/Battleship_TQ)
