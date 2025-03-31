@@ -41,7 +41,7 @@ class HostScreen:
         # Bouton pour copier l'IP
         self.copy_button = Button(
             panel_x + panel_width // 2 - 100,
-            panel_y + 220,
+            panel_y + 300,
             200,
             40,
             "Copier l'adresse IP",

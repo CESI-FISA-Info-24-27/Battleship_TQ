@@ -1,5 +1,6 @@
 import pygame
 import os
+import math  # Ajout de l'import de la bibliothèque standard math
 from ...utils.constants import (
     SCREEN_WIDTH, SCREEN_HEIGHT, WHITE, BLACK, BLUE, 
     RED, GREEN, DARK_BLUE, LIGHT_BLUE
@@ -150,7 +151,7 @@ class ConnectionScreen:
                 
                 # Mettre à jour le texte d'état
                 self.status_text = "Tentative de connexion" + "." * self.connection_dots
-            
+                
     def render(self, screen):
         """Rendre l'écran de connexion"""
         # Fond
@@ -227,7 +228,7 @@ class ConnectionScreen:
                 pygame.draw.circle(
                     screen, 
                     color, 
-                    (x + pygame.math.sin(y / 50) * 5, y), 
+                    (x + math.sin(y / 50) * 5, y),  # Utiliser math.sin
                     2
                 )
             
@@ -300,4 +301,4 @@ class ConnectionScreen:
             
     def _back_to_menu(self):
         """Retourner au menu principal"""
-        self.game.change_screen("main_menu")
+        self.game.change_screen("main_screen")
