@@ -48,7 +48,7 @@ class MainScreen:
         button_y = panel_y + 40
         self.solo_button = Button(
             button_x, button_y, button_width, button_height,
-            "Mode Solo", self._play_solo,
+            "Mode Solo (vs IA)", self._play_solo,
             font_size=28, border_radius=10,
             bg_color=BLUE, hover_color=BUTTON_HOVER_COLOR
         )
@@ -154,8 +154,8 @@ class MainScreen:
             )
         
     def _play_solo(self):
-        """Lancer une partie solo (local)"""
-        self.game.set_network_mode("local")
+        """Lancer une partie solo contre l'IA"""
+        self.game.set_network_mode("solo")  # Mode solo contre l'IA
         self.game.change_screen("ship_placement")
         
     def _host_game(self):

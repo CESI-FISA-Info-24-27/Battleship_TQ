@@ -87,34 +87,49 @@ class GameScreen:
         
         # Game state reference
         self.game_state = None
+        self.game_state_initialized = False
         
-        # Initialize game state based on network mode
-        self._init_game_state()
-                
     def _init_game_state(self):
         """Initialize game state based on network mode"""
-        if self.game.network_mode == "local":
-            # Use the game state created in the ship placement screen
-            if hasattr(self.game.screens["ship_placement"], 'game_state'):
-                self.game_state = self.game.screens["ship_placement"].game_state
-        else:
-            # In network mode, the game state comes from the server
-            # We'll set the callback to update our state
-            if self.game.client:
-                def on_game_state_update(game_state):
-                    self.game_state = game_state
-                    
-                    # Check for shot animations if we have a last_shot
-                    if game_state.last_shot:
-                        x, y, hit, _, _ = game_state.last_shot
-                        self.animation_coords = (x, y)
-                        self.animation_hit = hit
-                        self.animation_timer = 30  # frames
-                    
-                self.game.client.set_callback(on_game_state_update)
+        if not self.game_state_initialized:
+            try:
+                if self.game.network_mode in ["solo", "local"]:
+                    # Toujours récupérer le dernier état de l'écran de placement
+                    if hasattr(self.game, 'screens') and "ship_placement" in self.game.screens and hasattr(self.game.screens["ship_placement"], 'game_state'):
+                        self.game_state = self.game.screens["ship_placement"].game_state
+                        print("État du jeu récupéré de l'écran de placement")
+                    else:
+                        # Créer un nouveau GameState si nécessaire
+                        from ...game.game_state import GameState
+                        self.game_state = GameState()
+                        print("Nouvel état de jeu créé")
+                else:
+                    # En mode réseau, l'état du jeu vient du serveur
+                    if self.game.client:
+                        def on_game_state_update(game_state):
+                            self.game_state = game_state
+                            
+                            # Vérifier les animations de tir si nous avons un last_shot
+                            if game_state.last_shot:
+                                x, y, hit, _, _ = game_state.last_shot
+                                self.animation_coords = (x, y)
+                                self.animation_hit = hit
+                                self.animation_timer = 30  # frames
+                        
+                        self.game.client.set_callback(on_game_state_update)
                 
+                self.game_state_initialized = True
+            except Exception as e:
+                print(f"Erreur lors de l'initialisation du game state: {e}")
+                import traceback
+                traceback.print_exc()
+                    
     def handle_event(self, event):
         """Handle input events"""
+        # Initialize game state if needed
+        if not self.game_state_initialized:
+            self._init_game_state()
+            
         # Handle button events
         for button in self.buttons:
             button.handle_event(event)
@@ -128,12 +143,36 @@ class GameScreen:
                 
     def update(self):
         """Update screen state"""
+        # Initialize game state if needed
+        if not self.game_state_initialized:
+            self._init_game_state()
+            
         for button in self.buttons:
             button.update()
             
         # Update status text based on game state
         self._update_status_text()
         
+        # Gérer le tour du bot en mode solo
+        if (self.game.network_mode == "solo" and self.game_state and 
+            self.game_state.state == OPPONENT_TURN and 
+            self.animation_timer <= 0):
+            
+            # Faire jouer le bot
+            try:
+                bot_result = self.game_state.bot_play()
+                
+                if bot_result:
+                    # Configurer l'animation pour le tir du bot
+                    x, y, hit, _, _ = bot_result
+                    self.animation_coords = (x, y)
+                    self.animation_hit = hit
+                    self.animation_timer = 30  # frames
+            except Exception as e:
+                print(f"Erreur pendant le tour du bot: {e}")
+                import traceback
+                traceback.print_exc()
+                
         # Update animations
         if self.animation_timer > 0:
             self.animation_timer -= 1
@@ -141,8 +180,12 @@ class GameScreen:
     def _update_status_text(self):
         """Update the status text based on the current game state"""
         if not hasattr(self, 'game_state') or not self.game_state:
-            self.status_text = "En attente de la connexion..."
-            self.status_color = BLUE
+            if self.game.network_mode == "solo":
+                self.status_text = "Mode Solo - En attente de l'initialisation..."
+                self.status_color = BLUE
+            else:
+                self.status_text = "En attente de la connexion..."
+                self.status_color = BLUE
             return
             
         state = self.game_state.state
@@ -151,14 +194,22 @@ class GameScreen:
             self.status_text = "En attente que les joueurs placent leurs navires..."
             self.status_color = BLUE
         elif state == WAITING_FOR_OPPONENT:
-            self.status_text = "En attente de l'adversaire..."
-            self.status_color = BLUE
+            if self.game.network_mode == "solo":
+                self.status_text = "Prêt à jouer - À votre tour"
+                self.status_color = GREEN
+            else:
+                self.status_text = "En attente de l'adversaire..."
+                self.status_color = BLUE
         elif state == YOUR_TURN:
             self.status_text = "À votre tour - cliquez sur la grille adverse pour tirer"
             self.status_color = GREEN
         elif state == OPPONENT_TURN:
-            self.status_text = "Tour de l'adversaire - attendez votre tour"
-            self.status_color = RED
+            if self.game.network_mode == "solo":
+                self.status_text = "Tour de l'IA - L'ordinateur réfléchit..."
+                self.status_color = RED
+            else:
+                self.status_text = "Tour de l'adversaire - attendez votre tour"
+                self.status_color = RED
         elif state == GAME_OVER:
             if self.game_state.winner == self._get_player_id():
                 self.status_text = "Victoire! Tous les navires adverses ont été coulés!"
@@ -169,6 +220,10 @@ class GameScreen:
                 
     def render(self, screen):
         """Render the game screen"""
+        # Initialize game state if needed
+        if not self.game_state_initialized:
+            self._init_game_state()
+            
         # Background
         screen.fill(BLACK)
         
@@ -232,8 +287,8 @@ class GameScreen:
         if not self._is_player_turn():
             return
             
-        # Local game
-        if self.game.network_mode == "local":
+        # Local or solo game
+        if self.game.network_mode in ["local", "solo"]:
             # Check if the shot is valid
             player_id = self.game_state.current_player_index
             if self.game_state.process_shot(player_id, x, y):
@@ -252,46 +307,87 @@ class GameScreen:
         if not hasattr(self, 'game_state') or not self.game_state:
             return False
             
-        if self.game.network_mode == "local":
+        if self.game.network_mode in ["local", "solo"]:
             # In local mode, current_player_index indicates whose turn it is
-            return True
+            return self.game_state.current_player_index == 0
         else:
             # In network mode, check if state is YOUR_TURN
             return self.game_state.state == YOUR_TURN
             
     def _get_player_id(self):
         """Get the player ID based on game mode"""
-        if self.game.network_mode == "local":
-            # In local mode, we're always the current player
-            return self.game_state.current_player_index
+        if self.game.network_mode in ["local", "solo"]:
+            # In local mode, we're always player 0
+            return 0
         else:
             # In network mode, we have a fixed player ID
             return self.game.client.player_id if self.game.client else 0
             
     def _new_game(self):
         """Start a new game"""
-        if self.game.network_mode == "local":
-            # Reset the game state
-            self.game_state.reset()
-            
-            # Go back to ship placement
-            self.game.change_screen("ship_placement")
-        else:
-            # In network mode, we need to coordinate with the server
-            # For now, just go back to main menu
-            self._return_to_menu()
+        try:
+            if self.game.network_mode in ["local", "solo"]:
+                # Marquer que nous devons réinitialiser pour la prochaine fois
+                self.game_state_initialized = False
+                
+                # Informer l'écran de placement qu'il doit aussi se réinitialiser
+                if hasattr(self.game, 'screens') and "ship_placement" in self.game.screens:
+                    ship_screen = self.game.screens["ship_placement"]
+                    
+                    # Réinitialiser l'ID statique des navires 
+                    from ...game.ship import Ship
+                    Ship.next_id = 1
+                    
+                    # Créer un nouveau GameState
+                    from ...game.game_state import GameState
+                    new_game_state = GameState()
+                    
+                    # Mettre à jour l'écran de placement
+                    ship_screen.game_state = new_game_state
+                    ship_screen.current_player_index = 0
+                    ship_screen.player = new_game_state.players[0]
+                    ship_screen.selected_ship_index = 0
+                    ship_screen.ship_rotation = True
+                    ship_screen.ship_preview = None
+                    
+                    # Effacer les status messages
+                    ship_screen.status_text = ""
+                
+                # Aller à l'écran de placement des navires
+                self.game.change_screen("ship_placement")
+            else:
+                # En mode réseau, nous devons coordonner avec le serveur
+                # Pour l'instant, revenir au menu principal
+                self._return_to_menu()
+        except Exception as e:
+            print(f"Erreur lors de la nouvelle partie: {e}")
+            import traceback
+            traceback.print_exc()
             
     def _return_to_menu(self):
         """Return to the main menu"""
-        # Close connections in network mode
-        if self.game.network_mode in ["host", "client"]:
-            if self.game.client:
-                self.game.client.disconnect()
-                self.game.client = None
-                
-            if self.game.server:
-                self.game.server.stop()
-                self.game.server = None
+        try:
+            # Close connections in network mode
+            if self.game.network_mode in ["host", "client"]:
+                if self.game.client:
+                    self.game.client.disconnect()
+                    self.game.client = None
+                    
+                if self.game.server:
+                    self.game.server.stop()
+                    self.game.server = None
+            
+            # Réinitialiser les données d'état du jeu
+            self.game_state = None
+            self.game_state_initialized = False
+                    
+            # Go back to main menu
+            print("Retour au menu principal")
+            self.game.change_screen("main_menu")
+        except Exception as e:
+            print(f"Erreur lors du retour au menu: {e}")
+            import traceback
+            traceback.print_exc()
                 
         # Go back to main menu
-        self.game.change_screen("main_menu")
+        self.game.change_screen("main_screen")
