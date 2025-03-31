@@ -233,7 +233,6 @@ class ConnectionScreen:
                 )
             
     def _connect_to_server(self):
-        """Tenter de se connecter au serveur avec l'IP saisie"""
         if self.connecting:
             return
             
@@ -241,63 +240,59 @@ class ConnectionScreen:
         self.status_text = "Tentative de connexion..."
         self.status_color = WHITE
         
-        # Créer un nouveau client
-        host = self.input_text.strip()
+        # Séparer l'hôte et le port avec plus de précision
+        host_parts = self.input_text.strip().split(":")
         
-        # Séparer l'hôte et le port si spécifiés
-        if ":" in host:
-            host_parts = host.split(":")
+        if len(host_parts) == 2:
             host_address = host_parts[0]
             try:
                 port = int(host_parts[1])
             except ValueError:
                 port = 5555  # Port par défaut
-            self.game.client = Client(host=host_address, port=port)
         else:
-            # Utiliser le port par défaut si non spécifié
-            self.game.client = Client(host=host)
+            host_address = host_parts[0]
+            port = 5555
         
-        # Essayer de se connecter
+        # Créer un nouveau client avec l'adresse et le port spécifiés
         def connect_thread():
-            """Fonction pour exécuter la connexion dans un thread"""
             import threading
             import time
             
-            # Attendre un peu pour montrer l'animation
-            time.sleep(1)
+            time.sleep(1)  # Animation de connexion
+            
+            # Utiliser l'adresse IP exacte fournie
+            self.game.client = Client(host=host_address, port=port)
             
             success = self.game.client.connect()
             
             if success:
-                # Configurer l'écouteur d'état du jeu
+                # Configuration supplémentaire en cas de connexion réussie
                 def on_game_state_update(game_state):
-                    # Cette fonction sera appelée lorsque le serveur enverra une mise à jour d'état du jeu
-                    pass
-                    
+                    print("Game state update received")
+                    # Logique de mise à jour si nécessaire
+                
                 self.game.client.set_callback(on_game_state_update)
                 
-                # Passer à l'écran de placement des navires
+                # Message et transition
                 self.status_text = "Connexion réussie!"
                 self.status_color = GREEN
                 
-                # Attendre un court instant pour montrer le message de succès
                 time.sleep(0.5)
                 
-                # Passer à l'écran suivant dans le thread principal
+                # Changer d'écran dans le thread principal
                 self.game.set_network_mode("client")
                 self.game.change_screen("ship_placement")
                 self.connecting = False
             else:
-                self.status_text = "Échec de la connexion"
+                self.status_text = f"Échec de la connexion à {host_address}:{port}"
                 self.status_color = RED
                 self.game.client = None
                 self.connecting = False
         
-        # Lancer la connexion dans un thread séparé pour ne pas bloquer l'interface
-        import threading
-        connect_thread = threading.Thread(target=connect_thread)
-        connect_thread.daemon = True
-        connect_thread.start()
+        # Lancer la connexion dans un thread séparé
+        connect_thread_obj = threading.Thread(target=connect_thread)
+        connect_thread_obj.daemon = True
+        connect_thread_obj.start()
             
     def _back_to_menu(self):
         """Retourner au menu principal"""

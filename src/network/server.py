@@ -2,65 +2,97 @@ import socket
 import threading
 import pickle
 import time
+import logging
 from ..game.game_state import GameState
 from ..models.network_models import Action, GameStateUpdate
 from ..utils.constants import DEFAULT_PORT
 
 class Server:
     """
-    Server class for handling network connections in the game
+    Serveur pour gérer les connexions réseau du jeu de bataille navale
     """
     
     def __init__(self, host='0.0.0.0', port=DEFAULT_PORT):
+        # Configuration du logging
+        logging.basicConfig(
+            level=logging.INFO, 
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+        self.logger = logging.getLogger(__name__)
+        
+        # Paramètres du serveur
         self.host = host
         self.port = port
         self.server_socket = None
         self.running = False
-        self.game_state = GameState()
-        self.clients = []  # List of (connection, player_id) tuples
-        self.lock = threading.Lock()  # Thread lock for modifying game state
         
+        # État du jeu et gestion des clients
+        self.game_state = GameState()
+        self.clients = []  # Liste des tuples (connexion, ID_joueur)
+        self.lock = threading.Lock()  # Verrou pour modifications thread-safe
+    
     def start(self):
-        """Start the server and listen for connections"""
+        """
+        Démarrer le serveur et écouter les connexions
+        
+        Returns:
+            True si le démarrage est réussi, False sinon
+        """
         try:
+            # Créer le socket serveur
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             
             try:
+                # Lier le socket à l'hôte et au port
                 self.server_socket.bind((self.host, self.port))
-                self.server_socket.listen(2)  # Max 2 joueurs
+                self.server_socket.listen(2)  # Accepter max 2 joueurs
                 self.running = True
                 
-                # Obtenir l'adresse IP locale pour l'afficher
-                import socket as socket_lib
-                hostname = socket_lib.gethostname()
-                local_ip = socket_lib.gethostbyname(hostname)
+                # Obtenir l'adresse IP locale de manière robuste
+                try:
+                    # Méthode 1 : Utiliser une connexion temporaire à un serveur externe
+                    temp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    temp_socket.connect(("8.8.8.8", 80))
+                    local_ip = temp_socket.getsockname()[0]
+                    temp_socket.close()
+                except Exception:
+                    # Méthode de repli
+                    local_ip = socket.gethostbyname(socket.gethostname())
                 
-                print(f"Serveur démarré sur {self.host}:{self.port}")
-                print(f"Adresse IP locale: {local_ip}:{self.port}")
+                self.logger.info(f"Serveur démarré sur {self.host}:{self.port}")
+                self.logger.info(f"Adresse IP locale : {local_ip}:{self.port}")
                 
-                # Stocker l'IP locale pour l'afficher sur l'interface
+                # Stocker l'IP locale pour affichage
                 self.local_ip = local_ip
                 
-                # Accept connections in a separate thread
+                # Démarrer un thread pour accepter les connexions
                 accept_thread = threading.Thread(target=self._accept_connections)
                 accept_thread.daemon = True
                 accept_thread.start()
                 
                 return True
-            except Exception as e:
-                print(f"Error binding server: {e}")
-                self.server_socket.close()
-                return False
-        except Exception as e:
-            print(f"Error creating server socket: {e}")
-            return False
             
+            except Exception as e:
+                self.logger.error(f"Erreur de liaison du serveur : {e}")
+                try:
+                    self.server_socket.close()
+                except:
+                    pass
+                return False
+        
+        except Exception as e:
+            self.logger.error(f"Erreur de création du socket serveur : {e}")
+            return False
+    
     def stop(self):
-        """Stop the server"""
+        """
+        Arrêter le serveur et fermer toutes les connexions
+        """
+        self.logger.info("Arrêt du serveur")
         self.running = False
         
-        # Close all client connections
+        # Fermer toutes les connexions clients
         with self.lock:
             for conn, _ in self.clients:
                 try:
@@ -69,35 +101,40 @@ class Server:
                     pass
             
             self.clients = []
-                
-        # Close server socket
+        
+        # Fermer le socket serveur
         if self.server_socket:
             try:
                 self.server_socket.close()
             except:
                 pass
-                
-        print("Server stopped")
-                
+        
+        self.logger.info("Serveur arrêté")
+    
     def _accept_connections(self):
-        """Accept connections from clients"""
-        self.server_socket.settimeout(1.0)  # Timeout pour permettre des arrêts propres
+        """
+        Accepter les connexions des clients
+        """
+        # Timeout pour permettre des arrêts propres
+        self.server_socket.settimeout(1.0)
         
         while self.running:
             try:
+                # Accepter une nouvelle connexion
                 conn, addr = self.server_socket.accept()
-                print(f"New connection from {addr}")
+                self.logger.info(f"Nouvelle connexion de {addr}")
                 
-                # Assign player ID (0 for first player, 1 for second)
+                # Attribuer un ID de joueur
                 with self.lock:
                     player_id = len(self.clients)
-                    if player_id < 2:  # Only accept 2 players
+                    
+                    if player_id < 2:  # Accepter uniquement 2 joueurs
                         self.clients.append((conn, player_id))
                         
-                        # Send player ID to the client
+                        # Envoyer l'ID de joueur
                         conn.send(pickle.dumps(player_id))
                         
-                        # Start client handler thread
+                        # Démarrer un thread pour gérer ce client
                         handler_thread = threading.Thread(
                             target=self._handle_client,
                             args=(conn, player_id)
@@ -105,81 +142,91 @@ class Server:
                         handler_thread.daemon = True
                         handler_thread.start()
                     else:
-                        # Server full, reject connection
+                        # Serveur complet
+                        self.logger.warning("Tentative de connexion rejetée : serveur complet")
                         conn.send(pickle.dumps("SERVER_FULL"))
                         conn.close()
+            
             except socket.timeout:
-                # C'est normal, cela permet de vérifier si le serveur doit s'arrêter
+                # Timeout normal, continuer la boucle
                 continue
+            
             except Exception as e:
                 if self.running:
-                    print(f"Error accepting connection: {e}")
-                    time.sleep(1)  # Éviter une utilisation CPU élevée en cas d'erreurs
-                    
+                    self.logger.error(f"Erreur lors de l'acceptation des connexions : {e}")
+                    time.sleep(1)
+    
     def _handle_client(self, conn, player_id):
         """
-        Handle communication with a client
+        Gérer la communication avec un client
         
         Args:
-            conn: Socket connection
-            player_id: ID of the player (0 or 1)
+            conn: Connexion socket
+            player_id: ID du joueur (0 ou 1)
         """
-        conn.settimeout(0.5)  # Timeout pour éviter blocage en lecture
+        conn.settimeout(0.5)  # Timeout pour éviter un blocage
         
         try:
-            # Send initial game state
+            # Envoyer l'état initial du jeu
             self._send_game_state(conn)
             
-            # Main communication loop
+            # Boucle principale de communication
             while self.running:
-                # Receive action from client
                 try:
+                    # Recevoir une action
                     data = conn.recv(4096)
+                    
                     if not data:
-                        print(f"Client {player_id} disconnected (no data)")
+                        self.logger.warning(f"Client {player_id} déconnecté (aucune donnée)")
                         break
-                        
+                    
+                    # Traiter l'action
                     action = pickle.loads(data)
                     self._process_action(action)
                     
-                    # Send updated game state to all clients
+                    # Diffuser l'état du jeu à tous les clients
                     self._broadcast_game_state()
+                
                 except socket.timeout:
-                    # C'est normal, continue la boucle
+                    # Timeout normal, continuer
                     continue
+                
                 except (ConnectionResetError, ConnectionAbortedError):
-                    print(f"Client {player_id} connection reset")
+                    self.logger.warning(f"Réinitialisation de la connexion du client {player_id}")
                     break
+                
                 except Exception as e:
-                    print(f"Error receiving data from client {player_id}: {e}")
+                    self.logger.error(f"Erreur lors de la réception des données du client {player_id} : {e}")
                     break
+        
         except Exception as e:
-            print(f"Error handling client {player_id}: {e}")
+            self.logger.error(f"Erreur lors de la gestion du client {player_id}: {e}")
+        
         finally:
-            # Clean up connection
+            # Nettoyer la connexion
             with self.lock:
                 self.clients = [(c, pid) for c, pid in self.clients if c != conn]
-                
+            
             try:
                 conn.close()
             except:
                 pass
-                
-            print(f"Client {player_id} disconnected")
             
-            # Si un joueur se déconnecte, réinitialiser le jeu
+            self.logger.info(f"Client {player_id} déconnecté")
+            
+            # Si un joueur se déconnecte, réinitialiser l'état du jeu
             if self.running and player_id < 2:
-                print("Player disconnected, resetting game state")
+                self.logger.info("Un joueur s'est déconnecté, réinitialisation de l'état du jeu")
                 with self.lock:
                     self.game_state.reset()
                     self._broadcast_game_state()
-            
+    
     def _process_action(self, action):
         """
-        Process an action received from a client
+        Traiter une action reçue d'un client
         
         Args:
-            action: Action object
+            action: Objet Action
         """
         with self.lock:
             try:
@@ -192,31 +239,39 @@ class Server:
                         data["y"], 
                         data["horizontal"]
                     )
+                
                 elif action.type == Action.PLAYER_READY:
                     self.game_state.player_ready(action.player_id)
+                
                 elif action.type == Action.FIRE_SHOT:
                     data = action.data
                     self.game_state.process_shot(action.player_id, data["x"], data["y"])
-                # Chat messages don't modify game state, just broadcast them
-            except Exception as e:
-                print(f"Error processing action: {e}")
                 
+                # Les messages de chat ne modifient pas l'état du jeu, ils sont simplement diffusés
+                elif action.type == Action.CHAT_MESSAGE:
+                    pass
+            
+            except Exception as e:
+                self.logger.error(f"Erreur lors du traitement de l'action : {e}")
+    
     def _send_game_state(self, conn):
         """
-        Send current game state to a client
+        Envoyer l'état actuel du jeu à un client
         
         Args:
-            conn: Socket connection
+            conn: Connexion socket
         """
         try:
             with self.lock:
                 update = GameStateUpdate(self.game_state)
             conn.send(pickle.dumps(update))
         except Exception as e:
-            print(f"Error sending game state: {e}")
-            
+            self.logger.error(f"Erreur lors de l'envoi de l'état du jeu : {e}")
+    
     def _broadcast_game_state(self):
-        """Send current game state to all connected clients"""
+        """
+        Diffuser l'état du jeu à tous les clients connectés
+        """
         with self.lock:
             update = GameStateUpdate(self.game_state)
             data = pickle.dumps(update)
@@ -227,10 +282,10 @@ class Server:
                 try:
                     conn.send(data)
                 except:
-                    print(f"Failed to send update to player {player_id}")
+                    self.logger.warning(f"Échec de l'envoi de la mise à jour au joueur {player_id}")
                     disconnect_list.append((conn, player_id))
             
-            # Remove disconnected clients
+            # Supprimer les clients déconnectés
             for conn, player_id in disconnect_list:
                 if (conn, player_id) in self.clients:
                     self.clients.remove((conn, player_id))

@@ -2,6 +2,7 @@ import socket
 import threading
 import pickle
 import time
+import logging
 from ..utils.constants import DEFAULT_HOST, DEFAULT_PORT
 from ..models.network_models import Action
 
@@ -11,186 +12,214 @@ class Client:
     """
     
     def __init__(self, host=DEFAULT_HOST, port=DEFAULT_PORT):
+        # Configuration du logging
+        logging.basicConfig(
+            level=logging.INFO, 
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+        self.logger = logging.getLogger(__name__)
+        
+        # Paramètres de connexion
         self.host = host
         self.port = port
         self.socket = None
         self.connected = False
         self.player_id = None
         self.game_state = None
-        self.lock = threading.Lock()  # Thread lock for modifying game state
-        self.callback = None  # Callback function for game state updates
-        self.network_timeout = 10  # Timeout en secondes
+        
+        # Synchronisation et gestion des threads
+        self.lock = threading.Lock()
+        self.callback = None
+        self.network_timeout = 15  # Augmentation du timeout
+        self.reconnect_attempts = 0
+        self.max_reconnect_attempts = 3
         
     def connect(self):
         """
-        Connect to the game server
+        Tenter de se connecter au serveur avec des mécanismes de gestion d'erreurs améliorés
         
         Returns:
-            True if connection successful, False otherwise
+            True si la connexion est réussie, False sinon
         """
         try:
+            # Créer un nouveau socket
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.settimeout(self.network_timeout)  # Set timeout
+            self.socket.settimeout(self.network_timeout)
+            
+            self.logger.info(f"Tentative de connexion à {self.host}:{self.port}")
+            
+            # Connexion au serveur
             self.socket.connect((self.host, self.port))
             
-            # Receive player ID
+            # Recevoir l'ID du joueur
             data = self.socket.recv(4096)
             if not data:
-                print("No data received from server")
+                self.logger.warning("Aucune donnée reçue du serveur")
                 self.socket.close()
                 return False
-                
+            
             player_id = pickle.loads(data)
             
             if player_id == "SERVER_FULL":
-                print("Server is full")
+                self.logger.warning("Le serveur est complet")
                 self.socket.close()
                 return False
-                
+            
+            # Connexion réussie
             self.player_id = player_id
             self.connected = True
+            self.reconnect_attempts = 0
             
-            # Start listening for updates in a separate thread
+            # Démarrer un thread pour recevoir les mises à jour
             receive_thread = threading.Thread(target=self._receive_updates)
             receive_thread.daemon = True
             receive_thread.start()
             
+            self.logger.info(f"Connecté avec succès en tant que joueur {self.player_id}")
             return True
+        
         except socket.timeout:
-            print(f"Connection timeout to {self.host}:{self.port}")
-            if self.socket:
-                self.socket.close()
+            self.logger.error(f"Délai de connexion dépassé pour {self.host}:{self.port}")
+            self._close_socket()
             return False
+        
         except ConnectionRefusedError:
-            print(f"Connection refused by {self.host}:{self.port}")
-            if self.socket:
-                self.socket.close()
+            self.logger.error(f"Connexion refusée par {self.host}:{self.port}")
+            self._close_socket()
             return False
+        
         except Exception as e:
-            print(f"Error connecting to server: {e}")
-            if self.socket:
-                self.socket.close()
+            self.logger.error(f"Erreur de connexion : {e}")
+            self._close_socket()
             return False
-            
-    def disconnect(self):
-        """Disconnect from the server"""
-        self.connected = False
+    
+    def _close_socket(self):
+        """Fermer proprement le socket"""
         if self.socket:
             try:
                 self.socket.close()
             except:
                 pass
-                
+            self.socket = None
+    
+    def disconnect(self):
+        """Déconnecter proprement le client"""
+        self.logger.info("Déconnexion du serveur")
+        self.connected = False
+        self._close_socket()
+    
     def set_callback(self, callback):
         """
-        Set the callback function for game state updates
+        Définir une fonction de callback pour les mises à jour d'état de jeu
         
         Args:
-            callback: Function taking game_state as parameter
+            callback: Fonction prenant game_state comme paramètre
         """
         self.callback = callback
-        
+    
     def _receive_updates(self):
-        """Receive and process game state updates from the server"""
-        reconnect_attempts = 0
-        max_reconnect_attempts = 3
-        
+        """
+        Recevoir et traiter les mises à jour d'état de jeu du serveur
+        """
         while self.connected:
             try:
+                # Recevoir les données
                 data = self.socket.recv(4096)
+                
                 if not data:
-                    reconnect_attempts += 1
-                    if reconnect_attempts > max_reconnect_attempts:
-                        print("Connection lost: No data from server")
-                        break
-                        
-                    print(f"No data received, retry {reconnect_attempts}/{max_reconnect_attempts}")
-                    time.sleep(1)
-                    continue
-                    
-                reconnect_attempts = 0  # Reset counter on successful receive
-                    
+                    self.logger.warning("Aucune donnée reçue du serveur")
+                    break
+                
+                # Désérialiser la mise à jour
                 update = pickle.loads(data)
                 
+                # Mettre à jour l'état du jeu de manière thread-safe
                 with self.lock:
                     self.game_state = update.game_state
-                    
-                # Call the callback with the updated game state
+                
+                # Appeler le callback si défini
                 if self.callback:
                     self.callback(self.game_state)
-            except (ConnectionResetError, ConnectionAbortedError):
-                print("Connection reset by server")
-                break
-            except socket.timeout:
-                print("Socket timeout, retrying...")
-                reconnect_attempts += 1
-                if reconnect_attempts > max_reconnect_attempts:
-                    print("Connection lost: Too many timeouts")
-                    break
-                continue
-            except Exception as e:
-                print(f"Error receiving updates: {e}")
-                time.sleep(0.1)  # Éviter une utilisation CPU élevée en cas d'erreurs répétées
                 
-        self.connected = False
-        print("Disconnected from server")
+                # Réinitialiser les tentatives de reconnexion
+                self.reconnect_attempts = 0
+            
+            except (ConnectionResetError, ConnectionAbortedError):
+                self.logger.warning("Connexion réinitialisée par le serveur")
+                break
+            
+            except socket.timeout:
+                self.logger.info("Délai de socket dépassé")
+                continue
+            
+            except Exception as e:
+                self.logger.error(f"Erreur lors de la réception des mises à jour : {e}")
+                time.sleep(0.1)  # Éviter une utilisation CPU excessive
         
+        # Gérer la déconnexion
+        self.logger.info("Déconnecté du serveur")
+        self.connected = False
+        self._close_socket()
+    
     def send_action(self, action):
         """
-        Send an action to the server
+        Envoyer une action au serveur
         
         Args:
-            action: Action object to send
+            action: Objet Action à envoyer
             
         Returns:
-            True if sent successfully, False otherwise
+            True si envoyé avec succès, False sinon
         """
         if not self.connected:
+            self.logger.warning("Tentative d'envoi d'action sans connexion")
             return False
-            
+        
         try:
             self.socket.send(pickle.dumps(action))
             return True
         except Exception as e:
-            print(f"Error sending action: {e}")
+            self.logger.error(f"Erreur lors de l'envoi de l'action : {e}")
             self.connected = False
             return False
-            
+    
     def place_ship(self, ship_index, x, y, horizontal):
         """
-        Send a place ship action to the server
+        Envoyer une action de placement de navire au serveur
         
         Args:
-            ship_index: Index of the ship in the player's ships list
-            x, y: Coordinates for placement
-            horizontal: True for horizontal placement, False for vertical
+            ship_index: Index du navire dans la liste des navires du joueur
+            x, y: Coordonnées de placement
+            horizontal: True pour placement horizontal, False pour vertical
         """
         action = Action.create_place_ship(
             self.player_id, ship_index, x, y, horizontal
         )
         return self.send_action(action)
-        
+    
     def player_ready(self):
-        """Send a player ready action to the server"""
+        """
+        Signaler que le joueur est prêt
+        """
         action = Action.create_player_ready(self.player_id)
         return self.send_action(action)
-        
+    
     def fire_shot(self, x, y):
         """
-        Send a fire shot action to the server
+        Envoyer une action de tir au serveur
         
         Args:
-            x, y: Coordinates to fire at
+            x, y: Coordonnées du tir
         """
         action = Action.create_fire_shot(self.player_id, x, y)
         return self.send_action(action)
-        
+    
     def send_chat_message(self, message):
         """
-        Send a chat message to the server
+        Envoyer un message de chat au serveur
         
         Args:
-            message: Text of the chat message
+            message: Texte du message de chat
         """
         action = Action.create_chat_message(self.player_id, message)
         return self.send_action(action)
