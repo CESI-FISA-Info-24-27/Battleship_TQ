@@ -39,4 +39,4 @@ Ce projet a été réalisé sur une **durée de 5 jours** avec une répartition 
 ### 1. Cloner le dépôt
 
 ```bash
-[git clone https://github.com/votre-utilisateur/bataille-navale-en-ligne.git](https://github.com/CESI-FISA-Info-24-27/Battleship_TQ)
+[git clone https://github.com/CESI-FISA-Info-24-27/Battleship_TQ]
