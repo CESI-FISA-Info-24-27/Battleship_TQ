@@ -28,7 +28,7 @@ class Board:
         ship.y = y
         ship.horizontal = horizontal
         
-        # Update the grid with the ship ID (ship objects should have an ID property)
+        # Update the grid with the ship ID
         for i in range(ship.size):
             if horizontal:
                 self.grid[y][x + i] = ship.id
@@ -39,7 +39,17 @@ class Board:
         return True
         
     def is_valid_placement(self, ship, x, y, horizontal):
-        """Check if a ship can be placed at the given position"""
+        """
+        Check if a ship can be placed at the given position
+        
+        Args:
+            ship: Ship object to place
+            x, y: Coordinates of the ship's start
+            horizontal: True for horizontal placement, False for vertical
+            
+        Returns:
+            True if placement is valid, False otherwise
+        """
         # Check if the ship is inside the grid
         if horizontal:
             if x < 0 or x + ship.size > GRID_SIZE or y < 0 or y >= GRID_SIZE:
@@ -56,22 +66,29 @@ class Board:
             else:
                 if self.grid[y + i][x] != 0:
                     return False
-                    
+        
         # Check if the ship is adjacent to any other ship (optional rule)
+        # We'll check a 1-cell border around the ship
         for i in range(ship.size):
             if horizontal:
-                # Check surrounding cells
                 for dy in [-1, 0, 1]:
                     for dx in [-1, 0, 1]:
-                        nx, ny = x + i + dx, y + dy
+                        # Skip checking the ship cells themselves
+                        if dy == 0 and 0 <= dx < ship.size:
+                            continue
+                            
+                        nx, ny = x + dx, y + dy
                         if (0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and 
                             self.grid[ny][nx] != 0):
                             return False
             else:
-                # Check surrounding cells
                 for dy in [-1, 0, 1]:
                     for dx in [-1, 0, 1]:
-                        nx, ny = x + dx, y + i + dy
+                        # Skip checking the ship cells themselves
+                        if dx == 0 and 0 <= dy < ship.size:
+                            continue
+                            
+                        nx, ny = x + dx, y + dy
                         if (0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and 
                             self.grid[ny][nx] != 0):
                             return False
@@ -90,6 +107,7 @@ class Board:
                                   which ship was hit (if any), 
                                   and if the ship was sunk
         """
+        # Check if coordinates are valid
         if not (0 <= x < GRID_SIZE and 0 <= y < GRID_SIZE):
             return False, None, False
             

@@ -76,27 +76,45 @@ class Player:
         # First reset the board
         self.board.reset()
         
-        # Try to place each ship
-        for ship in self.ships:
-            placed = False
-            attempts = 0
+        # Maximum number of retries for the whole placement
+        max_total_attempts = 3
+        total_attempts = 0
+        
+        while total_attempts < max_total_attempts:
+            # Reset board for a new attempt
+            self.board.reset()
+            ships_placed = 0
             
-            while not placed and attempts < 100:
-                # Random position
-                x = random.randint(0, len(self.board.grid[0]) - 1)
-                y = random.randint(0, len(self.board.grid) - 1)
-                horizontal = random.choice([True, False])
+            # Try to place each ship
+            for ship in self.ships:
+                placed = False
+                max_attempts_per_ship = 100
+                attempts = 0
                 
-                placed = self.board.place_ship(ship, x, y, horizontal)
-                attempts += 1
+                while not placed and attempts < max_attempts_per_ship:
+                    # Random position
+                    x = random.randint(0, len(self.board.grid[0]) - 1)
+                    y = random.randint(0, len(self.board.grid) - 1)
+                    horizontal = random.choice([True, False])
+                    
+                    placed = self.board.place_ship(ship, x, y, horizontal)
+                    attempts += 1
+                    
+                if not placed:
+                    # If we couldn't place this ship, break the loop and try again
+                    break
+                else:
+                    ships_placed += 1
+            
+            # If all ships were placed successfully
+            if ships_placed == len(self.ships):
+                self.ready = True
+                return True
                 
-            if not placed:
-                # If we couldn't place a ship after many attempts, reset and start over
-                self.board.reset()
-                return self.auto_place_ships()
-                
-        self.ready = True
-        return True
+            total_attempts += 1
+            
+        # If we couldn't place all ships after max retries
+        return False
         
     def receive_shot(self, x, y):
         """Process a shot from the opponent"""

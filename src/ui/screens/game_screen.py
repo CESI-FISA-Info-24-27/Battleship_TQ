@@ -86,15 +86,30 @@ class GameScreen:
         self.animation_hit = False
         
         # Game state reference
+        self.game_state = None
+        
+        # Initialize game state based on network mode
+        self._init_game_state()
+                
+    def _init_game_state(self):
+        """Initialize game state based on network mode"""
         if self.game.network_mode == "local":
             # Use the game state created in the ship placement screen
-            self.game_state = self.game.screens["ship_placement"].game_state
+            if hasattr(self.game.screens["ship_placement"], 'game_state'):
+                self.game_state = self.game.screens["ship_placement"].game_state
         else:
             # In network mode, the game state comes from the server
             # We'll set the callback to update our state
             if self.game.client:
                 def on_game_state_update(game_state):
                     self.game_state = game_state
+                    
+                    # Check for shot animations if we have a last_shot
+                    if game_state.last_shot:
+                        x, y, hit, _, _ = game_state.last_shot
+                        self.animation_coords = (x, y)
+                        self.animation_hit = hit
+                        self.animation_timer = 30  # frames
                     
                 self.game.client.set_callback(on_game_state_update)
                 
@@ -221,17 +236,15 @@ class GameScreen:
         if self.game.network_mode == "local":
             # Check if the shot is valid
             player_id = self.game_state.current_player_index
-            self.game_state.process_shot(player_id, x, y)
-            
-            # Set animation
-            self.animation_coords = (x, y)
-            self.animation_hit = self.game_state.last_shot[2]  # hit status
-            self.animation_timer = 30  # frames
+            if self.game_state.process_shot(player_id, x, y):
+                # Set animation
+                self.animation_coords = (x, y)
+                self.animation_hit = self.game_state.last_shot[2]  # hit status
+                self.animation_timer = 30  # frames
         
         # Network game
         elif self.game.client:
             self.game.client.fire_shot(x, y)
-            
             # Animation will be triggered when we get the game state update
             
     def _is_player_turn(self):
