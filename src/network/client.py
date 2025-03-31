@@ -19,6 +19,7 @@ class Client:
         self.game_state = None
         self.lock = threading.Lock()  # Thread lock for modifying game state
         self.callback = None  # Callback function for game state updates
+        self.network_timeout = 10  # Timeout en secondes
         
     def connect(self):
         """
@@ -29,10 +30,16 @@ class Client:
         """
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.settimeout(self.network_timeout)  # Set timeout
             self.socket.connect((self.host, self.port))
             
             # Receive player ID
             data = self.socket.recv(4096)
+            if not data:
+                print("No data received from server")
+                self.socket.close()
+                return False
+                
             player_id = pickle.loads(data)
             
             if player_id == "SERVER_FULL":
@@ -49,8 +56,20 @@ class Client:
             receive_thread.start()
             
             return True
+        except socket.timeout:
+            print(f"Connection timeout to {self.host}:{self.port}")
+            if self.socket:
+                self.socket.close()
+            return False
+        except ConnectionRefusedError:
+            print(f"Connection refused by {self.host}:{self.port}")
+            if self.socket:
+                self.socket.close()
+            return False
         except Exception as e:
             print(f"Error connecting to server: {e}")
+            if self.socket:
+                self.socket.close()
             return False
             
     def disconnect(self):
@@ -73,11 +92,23 @@ class Client:
         
     def _receive_updates(self):
         """Receive and process game state updates from the server"""
+        reconnect_attempts = 0
+        max_reconnect_attempts = 3
+        
         while self.connected:
             try:
                 data = self.socket.recv(4096)
                 if not data:
-                    break
+                    reconnect_attempts += 1
+                    if reconnect_attempts > max_reconnect_attempts:
+                        print("Connection lost: No data from server")
+                        break
+                        
+                    print(f"No data received, retry {reconnect_attempts}/{max_reconnect_attempts}")
+                    time.sleep(1)
+                    continue
+                    
+                reconnect_attempts = 0  # Reset counter on successful receive
                     
                 update = pickle.loads(data)
                 
@@ -88,10 +119,18 @@ class Client:
                 if self.callback:
                     self.callback(self.game_state)
             except (ConnectionResetError, ConnectionAbortedError):
+                print("Connection reset by server")
                 break
+            except socket.timeout:
+                print("Socket timeout, retrying...")
+                reconnect_attempts += 1
+                if reconnect_attempts > max_reconnect_attempts:
+                    print("Connection lost: Too many timeouts")
+                    break
+                continue
             except Exception as e:
                 print(f"Error receiving updates: {e}")
-                time.sleep(0.1)  # Avoid CPU spike on repeated errors
+                time.sleep(0.1)  # Éviter une utilisation CPU élevée en cas d'erreurs répétées
                 
         self.connected = False
         print("Disconnected from server")
