@@ -1,5 +1,5 @@
 from .player import Player
-from ..utils.constants import PLACING_SHIPS, WAITING_FOR_OPPONENT, YOUR_TURN, OPPONENT_TURN, GAME_OVER
+from ..utils.constants import PLACING_SHIPS, WAITING_FOR_OPPONENT, YOUR_TURN, OPPONENT_TURN, GAME_OVER, GRID_SIZE
 
 class GameState:
     """
@@ -69,6 +69,68 @@ class GameState:
                 self.state = OPPONENT_TURN
                 
         return True
+    
+    def bot_play(self):
+        """
+        Faire jouer le bot (en mode solo)
+        
+        Returns:
+            (x, y, hit, ship_id, sunk): Résultat du tir du bot
+        """
+        import random
+        
+        # Vérifier si c'est le tour du bot (joueur 1)
+        if self.current_player_index != 1:
+            return None
+            
+        player = self.get_opponent_player()  # Joueur humain
+        
+        # Stratégie simple pour l'IA:
+        # 1. Si un navire a été touché mais pas coulé, tirer autour
+        # 2. Sinon, tirer aléatoirement dans une case non explorée
+        
+        # Obtenir les tirs précédents
+        shots = player.board.shots
+        
+        # Lister les cases où un tir a touché mais pas coulé
+        hits = []
+        for x, y, hit in shots:
+            if hit:
+                ship_id = player.board.grid[y][x]
+                ship = next((s for s in player.board.ships if s.id == ship_id), None)
+                if ship and not ship.is_sunk():
+                    hits.append((x, y))
+        
+        # Liste des directions possibles pour explorer autour d'un hit
+        directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+        
+        # Si nous avons des hits non coulés, tirer autour
+        for hit_x, hit_y in hits:
+            for dx, dy in directions:
+                x, y = hit_x + dx, hit_y + dy
+                if 0 <= x < GRID_SIZE and 0 <= y < GRID_SIZE:
+                    # Vérifier si la case a déjà été touchée
+                    if not any(shot_x == x and shot_y == y for shot_x, shot_y, _ in shots):
+                        # Tirer dans cette case
+                        hit, ship_id, sunk = self.process_shot(1, x, y)
+                        return (x, y, hit, ship_id, sunk)
+        
+        # Si pas de stratégie spécifique, tirer aléatoirement
+        # Créer une liste de toutes les cases non ciblées
+        untargeted = []
+        for x in range(GRID_SIZE):
+            for y in range(GRID_SIZE):
+                if not any(shot_x == x and shot_y == y for shot_x, shot_y, _ in shots):
+                    untargeted.append((x, y))
+        
+        # S'il reste des cases non ciblées, en choisir une aléatoirement
+        if untargeted:
+            x, y = random.choice(untargeted)
+            hit, ship_id, sunk = self.process_shot(1, x, y)
+            return (x, y, hit, ship_id, sunk)
+            
+        # Si toutes les cases ont été ciblées, la partie devrait être terminée
+        return None
         
     def reset(self):
         """Reset the game state for a new game"""

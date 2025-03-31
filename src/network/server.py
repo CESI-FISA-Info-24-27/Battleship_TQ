@@ -28,10 +28,19 @@ class Server:
             
             try:
                 self.server_socket.bind((self.host, self.port))
-                self.server_socket.listen(2)  # Max 2 players
+                self.server_socket.listen(2)  # Max 2 joueurs
                 self.running = True
                 
-                print(f"Server started on {self.host}:{self.port}")
+                # Obtenir l'adresse IP locale pour l'afficher
+                import socket as socket_lib
+                hostname = socket_lib.gethostname()
+                local_ip = socket_lib.gethostbyname(hostname)
+                
+                print(f"Serveur démarré sur {self.host}:{self.port}")
+                print(f"Adresse IP locale: {local_ip}:{self.port}")
+                
+                # Stocker l'IP locale pour l'afficher sur l'interface
+                self.local_ip = local_ip
                 
                 # Accept connections in a separate thread
                 accept_thread = threading.Thread(target=self._accept_connections)

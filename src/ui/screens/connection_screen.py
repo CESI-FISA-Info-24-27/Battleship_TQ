@@ -171,6 +171,15 @@ class ConnectionScreen:
         # Instructions
         screen.blit(self.instructions_text, self.instructions_rect)
         
+        # Instructions supplémentaires
+        instructions_extra = self.info_font.render(
+            "Exemple: 192.168.1.10:5555", True, LIGHT_BLUE
+        )
+        instructions_extra_rect = instructions_extra.get_rect(
+            center=(SCREEN_WIDTH // 2, self.instructions_rect.bottom + 20)
+        )
+        screen.blit(instructions_extra, instructions_extra_rect)
+        
         # Champ de saisie
         input_color = LIGHT_BLUE if self.input_active else WHITE
         pygame.draw.rect(screen, BLACK, self.input_rect.inflate(4, 4), border_radius=8)
@@ -233,7 +242,19 @@ class ConnectionScreen:
         
         # Créer un nouveau client
         host = self.input_text.strip()
-        self.game.client = Client(host=host)
+        
+        # Séparer l'hôte et le port si spécifiés
+        if ":" in host:
+            host_parts = host.split(":")
+            host_address = host_parts[0]
+            try:
+                port = int(host_parts[1])
+            except ValueError:
+                port = 5555  # Port par défaut
+            self.game.client = Client(host=host_address, port=port)
+        else:
+            # Utiliser le port par défaut si non spécifié
+            self.game.client = Client(host=host)
         
         # Essayer de se connecter
         def connect_thread():
@@ -262,6 +283,7 @@ class ConnectionScreen:
                 time.sleep(0.5)
                 
                 # Passer à l'écran suivant dans le thread principal
+                self.game.set_network_mode("client")
                 self.game.change_screen("ship_placement")
                 self.connecting = False
             else:
@@ -278,4 +300,4 @@ class ConnectionScreen:
             
     def _back_to_menu(self):
         """Retourner au menu principal"""
-        self.game.change_screen("main_screen")
+        self.game.change_screen("main_menu")

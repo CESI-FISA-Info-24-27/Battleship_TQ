@@ -6,6 +6,8 @@ from src.ui.screens.main_screen import MainScreen
 from src.ui.screens.game_screen import GameScreen
 from src.ui.screens.ship_placement import ShipPlacement
 from src.ui.screens.connection_screen import ConnectionScreen
+from src.ui.screens.host_screen import HostScreen
+
 
 class Game:
     def __init__(self):
@@ -27,7 +29,7 @@ class Game:
         # Initialiser l'horloge pour limiter les FPS
         self.clock = pygame.time.Clock()
         self.running = True
-        self.current_screen = "main_screen"  # Écran de démarrage
+        self.current_screen = "main_screen"  # Écran de démarrage (modifié de "main_screen" à "main_screen")
         
         # Initialiser les paramètres de réseau
         self.network_mode = None  # "host", "client", or "local"
@@ -36,10 +38,11 @@ class Game:
         
         # Initialiser les écrans
         self.screens = {
-            "main_screen": MainScreen(self),
+            "main_screen": MainScreen(self),  # Modifié de "main_screen" à "main_screen"
             "connection": ConnectionScreen(self),
             "ship_placement": ShipPlacement(self),
-            "game_screen": GameScreen(self)
+            "game_screen": GameScreen(self),
+            "host_screen": HostScreen(self)  # Nouvel écran d'hôte
         }
         
         # Créer les dossiers d'assets s'ils n'existent pas
@@ -104,7 +107,18 @@ class Game:
             self.client.disconnect()
         pygame.quit()
         sys.exit()
-        
+
+    def _host_game(self):
+        """Héberger une partie en réseau"""
+        self.game.set_network_mode("host")
+        self.game.change_screen("host_screen")  # Aller à l'écran d'attente
+
+    def _play_solo(self):
+        """Lancer une partie solo contre l'IA"""
+        print("Définition du mode solo")  # Message de débogage
+        self.game.set_network_mode("solo")  # S'assurer que c'est bien "solo", et pas "local"
+        self.game.change_screen("ship_placement")
+            
     def _ensure_assets_folders(self):
         """S'assurer que les dossiers d'assets existent"""
         # Créer les dossiers necessaires s'ils n'existent pas

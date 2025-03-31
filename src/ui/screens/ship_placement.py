@@ -36,10 +36,15 @@ class ShipPlacement:
         self.grid = Grid(grid_x, grid_y, is_player_grid=True)
         
         # Configuration du joueur
-        if self.game.network_mode == "local":
+        self.current_player_index = 0  # Toujours initialiser
+        
+        if self.game.network_mode == "solo":
+            # En mode solo, créer un game_state avec un joueur humain et un bot
+            self.game_state = GameState()
+            self.player = self.game_state.players[self.current_player_index]
+        elif self.game.network_mode == "local":
             # En mode local, utiliser directement le game_state
             self.game_state = GameState()
-            self.current_player_index = 0
             self.player = self.game_state.players[self.current_player_index]
         else:
             # En mode réseau, créer un joueur local pour le placement des navires
@@ -131,6 +136,9 @@ class ShipPlacement:
         # Bouton de retour
         self.back_button = BackButton(30, 30, 30, self._return_to_menu)
         
+        # Statut pour les messages à l'utilisateur
+        self.status_text = ""
+        self.status_color = WHITE
         
         # Rassembler les boutons pour faciliter la gestion
         self.buttons = [
@@ -247,12 +255,18 @@ class ShipPlacement:
 
         for i, text in enumerate(instructions):
             instr_surface = self.info_font.render(text, True, LIGHT_BLUE)
-            self.info_font = pygame.font.Font(None, 18)
             instr_rect = instr_surface.get_rect(
                 center=(x_position, y_base - 25 + i * 25)  # Centrage vertical avec un espacement
             )
             screen.blit(instr_surface, instr_rect)
-
+        
+        # Afficher le message de statut
+        if self.status_text:
+            status_surface = self.info_font.render(self.status_text, True, self.status_color)
+            status_rect = status_surface.get_rect(
+                center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 30)
+            )
+            screen.blit(status_surface, status_rect)
         
         # Dessiner les boutons
         for button in self.buttons:
@@ -439,8 +453,107 @@ class ShipPlacement:
             self.game.client.player_ready()
             self.status_text = "En attente de l'adversaire..."
             self.status_color = BLUE
+        elif self.game.network_mode == "solo":
+            try:
+                if hasattr(self, 'game_state'):
+                        # Marquer le joueur humain comme prêt
+                        self.game_state.player_ready(0)
+                        
+                        print("Placement des navires de l'IA...")
+                        # Placer aléatoirement les navires du bot
+                        if self.game_state.players[1].auto_place_ships():
+                            print("Navires de l'IA placés avec succès")
+                            self.game_state.player_ready(1)  # Marquer le bot comme prêt
+                            
+                            # Définir que c'est le tour du joueur humain
+                            self.game_state.current_player_index = 0
+                            self.game_state.state = YOUR_TURN
+                            
+                            # Passer à l'écran de jeu
+                            self.game.change_screen("game_screen")
+                        else:
+                            print("Erreur: impossible de placer les navires de l'IA")
+                else:
+                    # Si game_state n'existe pas, l'initialiser
+                    print("Initialisation de game_state en mode solo")
+                    self.game_state = GameState()
+                    self.current_player_index = 0
+                    
+                    # Copier les navires du joueur actuel vers le game_state
+                    for i, ship in enumerate(self.player.ships):
+                        if ship.is_placed():
+                            self.game_state.players[0].place_ship(i, ship.x, ship.y, ship.horizontal)
+                    
+                    # Marquer le joueur humain comme prêt
+                    self.game_state.player_ready(0)
+                    
+                    # Placer aléatoirement les navires du bot
+                    if self.game_state.players[1].auto_place_ships():
+                        self.game_state.player_ready(1)  # Marquer le bot comme prêt
+                        
+                        # Passer à l'écran de jeu
+                        self.game.change_screen("game_screen")
+                    else:
+                        print("Échec du placement des navires du bot")
+            except Exception as e:
+                print(f"Erreur en mode solo: {e}")
+                import traceback
+                traceback.print_exc()
+                self.status_text = "Erreur lors du lancement du jeu"
+                self.status_color = RED
         elif self.game.network_mode == "local":
-            # En mode local, passer à l'autre joueur s'il n'est pas prêt
+            try:
+                # En mode local (2 joueurs), passer au joueur 2 s'il n'est pas prêt
+                if hasattr(self, 'game_state'):
+                    if self.current_player_index == 0 and not self.game_state.players[1].ready:
+                        self.current_player_index = 1
+                        self.player = self.game_state.players[self.current_player_index]
+                        self.title_text = self.title_font.render("Joueur 2 - Placez vos navires", True, WHITE)
+                        self.title_rect = self.title_text.get_rect(center=(SCREEN_WIDTH // 2, 50))
+                        self.status_text = "Joueur 2, placez vos navires"
+                        self.status_color = WHITE
+                        
+                        # Réinitialiser la sélection de navire
+                        self.selected_ship_index = 0
+                        self.ship_rotation = True
+                        self.ship_preview = None
+                    else:
+                        # Les deux joueurs sont prêts, démarrer la partie
+                        self.game_state.player_ready(0)
+                        self.game_state.player_ready(1)
+                        self.game.change_screen("game_screen")
+                else:
+                    print("Erreur: game_state n'existe pas en mode local")
+            except Exception as e:
+                print(f"Erreur en mode local: {e}")
+                import traceback
+                traceback.print_exc()
+                self.status_text = "Erreur lors du lancement du jeu"
+                self.status_color = RED
+            
+        # Marquer le joueur comme prêt
+        self.player.ready = True
+        
+        # Mode réseau : envoyer le signal prêt au serveur
+        if self.game.network_mode in ["host", "client"] and self.game.client:
+            self.game.client.player_ready()
+            self.status_text = "En attente de l'adversaire..."
+            self.status_color = BLUE
+        elif self.game.network_mode == "solo":
+            # En mode solo (vs IA), placer automatiquement les navires du bot
+            self.game_state.player_ready(0)  # Marquer le joueur humain comme prêt
+            
+            # Placer aléatoirement les navires du bot
+            if self.game_state.players[1].auto_place_ships():
+                self.game_state.player_ready(1)  # Marquer le bot comme prêt
+                
+                # Passer à l'écran de jeu
+                self.game.change_screen("game_screen")
+            else:
+                # En cas d'échec du placement automatique (très rare)
+                print("Erreur: impossible de placer les navires du bot")
+        elif self.game.network_mode == "local":
+            # En mode local (2 joueurs), passer au joueur 2 s'il n'est pas prêt
             if self.current_player_index == 0 and not self.game_state.players[1].ready:
                 self.current_player_index = 1
                 self.player = self.game_state.players[self.current_player_index]
