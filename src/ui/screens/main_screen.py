@@ -124,8 +124,6 @@ class MainScreen:
             screen.blit(self.background, (0, 0))
         else:
             screen.fill(BLACK)
-            
-            # Dessiner des ondes comme fond alternatif
             self._draw_waves(screen)
         
         # Titre et sous-titre
@@ -155,30 +153,16 @@ class MainScreen:
         
     def _play_solo(self):
         """Lancer une partie solo contre l'IA"""
-        self.game.set_network_mode("solo")  # Mode solo contre l'IA
+        self.game.set_network_mode("solo")
         self.game.change_screen("ship_placement")
         
     def _host_game(self):
         """Héberger une partie en réseau"""
-        from ...network.server import Server
+        # On définit le mode réseau sur "host" et on redirige vers l'écran HostScreen.
+        # Celui-ci se chargera de démarrer le serveur local et d'attendre qu'un adversaire se connecte.
+        self.game.set_network_mode("host")
+        self.game.change_screen("host_screen")
         
-        # Démarrer le serveur
-        self.game.server = Server()
-        if self.game.server.start():
-            # Se connecter aussi en tant que client (joueur 0)
-            from ...network.client import Client
-            self.game.client = Client()
-            if self.game.client.connect():
-                self.game.set_network_mode("host")
-                self.game.change_screen("ship_placement")
-            else:
-                # Échec de la connexion en tant que client
-                self.game.server.stop()
-                self.game.server = None
-        else:
-            # Échec du démarrage du serveur
-            self.game.server = None
-            
     def _join_game(self):
         """Rejoindre une partie existante"""
         self.game.set_network_mode("client")

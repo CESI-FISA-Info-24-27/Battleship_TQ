@@ -1,18 +1,18 @@
 import pygame
 import os
-import math  # Ajout de l'import math pour la fonction sin()
+import math  # Utilisation de math.sin pour les motifs
 from ...utils.constants import (
     SCREEN_WIDTH, SCREEN_HEIGHT, GRID_SIZE, CELL_SIZE, 
     WHITE, BLACK, BLUE, GREEN, RED, GRAY, DARK_BLUE, LIGHT_BLUE, YELLOW,
     SHIPS
 )
+from ...game.game_state import GameState, YOUR_TURN  # Import de YOUR_TURN pour éviter une erreur
 from ..components.button import Button
 from ..components.back_button import BackButton
 from ..components.panel import Panel
 from ..components.grid import Grid
 from ...game.ship import Ship
 from ...game.player import Player
-from ...game.game_state import GameState
 
 class ShipPlacement:
     """Écran de placement des navires avec design amélioré"""
@@ -35,27 +35,18 @@ class ShipPlacement:
         grid_y = 120
         self.grid = Grid(grid_x, grid_y, is_player_grid=True)
         
-        # Configuration du joueur
-        self.current_player_index = 0  # Toujours initialiser
-        
-        if self.game.network_mode == "solo":
-            # En mode solo, créer un game_state avec un joueur humain et un bot
-            self.game_state = GameState()
-            self.player = self.game_state.players[self.current_player_index]
-        elif self.game.network_mode == "local":
-            # En mode local, utiliser directement le game_state
+        # Configuration du joueur et game_state selon le mode
+        self.current_player_index = 0
+        if self.game.network_mode in ["solo", "local"]:
             self.game_state = GameState()
             self.player = self.game_state.players[self.current_player_index]
         else:
-            # En mode réseau, créer un joueur local pour le placement des navires
-            # L'état réel du jeu viendra du serveur plus tard
+            # Mode réseau : l'état réel viendra du serveur ultérieurement
             self.player = Player(0)
-            
-        # Navire sélectionné
-        self.selected_ship_index = 0
-        self.ship_rotation = True  # True pour horizontal, False pour vertical
         
-        # Aperçu du navire
+        # Navire sélectionné et son orientation
+        self.selected_ship_index = 0
+        self.ship_rotation = True  # True = horizontal, False = vertical
         self.ship_preview = None
         
         # Panneau pour la sélection des navires
@@ -63,7 +54,6 @@ class ShipPlacement:
         ships_panel_height = 280
         ships_panel_x = 20
         ships_panel_y = 150
-        
         self.ships_panel = Panel(
             ships_panel_x, ships_panel_y, ships_panel_width, ships_panel_height,
             DARK_BLUE, BLUE, 2, 0.8, 10, True
@@ -73,18 +63,13 @@ class ShipPlacement:
         button_width = 180
         button_height = 45
         button_margin = 15
-
-        # Positions des boutons
-        grid_bottom = grid_y + (GRID_SIZE * CELL_SIZE)  # Bas de la grille
-
-        # Calcul de la position centrale des boutons
+        grid_bottom = grid_y + (GRID_SIZE * CELL_SIZE)
         total_buttons_width = 2 * button_width + button_margin
         buttons_start_x = (SCREEN_WIDTH - total_buttons_width) // 2
 
-        # Bouton de rotation
         self.rotate_button = Button(
             buttons_start_x,
-            grid_bottom + 50,  # Augmenté de 20 à 50
+            grid_bottom + 50,  # Position ajustée
             button_width,
             button_height,
             "Tourner (R)",
@@ -94,10 +79,9 @@ class ShipPlacement:
             bg_color=BLUE
         )
 
-        # Bouton de placement aléatoire
         self.random_button = Button(
             buttons_start_x + button_width + button_margin,
-            grid_bottom + 50,  # Augmenté de 20 à 50
+            grid_bottom + 50,
             button_width,
             button_height,
             "Aléatoire",
@@ -107,10 +91,9 @@ class ShipPlacement:
             bg_color=BLUE
         )
 
-        # Bouton de réinitialisation
         self.reset_button = Button(
             buttons_start_x,
-            grid_bottom + 50 + button_height + button_margin,  # Ajusté également
+            grid_bottom + 50 + button_height + button_margin,
             button_width,
             button_height,
             "Réinitialiser",
@@ -120,10 +103,9 @@ class ShipPlacement:
             bg_color=RED
         )
 
-        # Bouton prêt
         self.ready_button = Button(
             buttons_start_x + button_width + button_margin,
-            grid_bottom + 50 + button_height + button_margin,  # Ajusté également
+            grid_bottom + 50 + button_height + button_margin,
             button_width,
             button_height,
             "Prêt !",
@@ -133,14 +115,13 @@ class ShipPlacement:
             bg_color=GREEN
         )
                         
-        # Bouton de retour
         self.back_button = BackButton(30, 30, 30, self._return_to_menu)
         
-        # Statut pour les messages à l'utilisateur
+        # Message de statut pour l'utilisateur
         self.status_text = ""
         self.status_color = WHITE
         
-        # Rassembler les boutons pour faciliter la gestion
+        # Rassembler les boutons pour faciliter leur gestion
         self.buttons = [
             self.rotate_button,
             self.random_button,
@@ -148,43 +129,38 @@ class ShipPlacement:
             self.ready_button
         ]
         
-        # Image de fond
-        self.background = None
+        # Chargement de l'image de fond
+        self.background = self._load_background()
+        
+    def _load_background(self):
+        """Charger et redimensionner l'image de fond si disponible"""
         try:
             bg_path = os.path.join("assets", "images", "ocean_bg.jpg")
             if os.path.exists(bg_path):
                 bg = pygame.image.load(bg_path)
-                self.background = pygame.transform.scale(bg, (SCREEN_WIDTH, SCREEN_HEIGHT))
-        except:
-            print("Impossible de charger l'image de fond")
+                return pygame.transform.scale(bg, (SCREEN_WIDTH, SCREEN_HEIGHT))
+        except Exception as e:
+            print("Impossible de charger l'image de fond:", e)
+        return None
         
     def handle_event(self, event):
         """Gérer les événements d'entrée"""
-        # Gérer les événements des boutons
         for button in self.buttons:
             button.handle_event(event)
-            
-        # Gérer le bouton de retour
         self.back_button.handle_event(event)
             
-        # Gérer les événements de la grille
         cell = self.grid.handle_event(event)
         if cell:
             self._place_ship_at_cell(*cell)
             
-        # Gérer les événements du clavier
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_r:
-                # Tourner le navire avec la touche 'R'
                 self._rotate_ship()
-            elif event.key == pygame.K_LEFT or event.key == pygame.K_UP:
-                # Navire précédent
+            elif event.key in (pygame.K_LEFT, pygame.K_UP):
                 self._select_prev_ship()
-            elif event.key == pygame.K_RIGHT or event.key == pygame.K_DOWN:
-                # Navire suivant
+            elif event.key in (pygame.K_RIGHT, pygame.K_DOWN):
                 self._select_next_ship()
                 
-        # Mettre à jour l'aperçu du navire lors des mouvements de la souris
         if event.type == pygame.MOUSEMOTION:
             self._update_ship_preview()
             
@@ -192,44 +168,30 @@ class ShipPlacement:
         """Mettre à jour l'état de l'écran"""
         for button in self.buttons:
             button.update()
-            
-        # Mettre à jour le bouton de retour
         self.back_button.update()
             
-        # Vérifier si tous les navires sont placés
+        # Activer le bouton "Prêt" uniquement si tous les navires sont placés
         all_placed = all(ship.is_placed() for ship in self.player.ships)
-        
-        # Mettre en évidence le bouton prêt si tous les navires sont placés
         self.ready_button.normal_color = GREEN if all_placed else (100, 100, 100)
         self.ready_button.hover_color = (100, 220, 100) if all_placed else (120, 120, 120)
         self.ready_button.disabled = not all_placed
             
     def render(self, screen):
         """Rendre l'écran de placement des navires"""
-        # Fond
         if self.background:
             screen.blit(self.background, (0, 0))
         else:
             screen.fill(BLACK)
-            
-            # Dessiner un motif de fond alternatif
             self._draw_background_pattern(screen)
         
-        # Titre
         screen.blit(self.title_text, self.title_rect)
-        
-        # Bouton de retour
         self.back_button.draw(screen)
-        
-        # Dessiner la grille avec les navires et l'aperçu
         self.grid.draw(
             screen, 
             self.player.board, 
             show_ships=True, 
             ship_preview=self.ship_preview
         )
-        
-        # Panneau de sélection des navires
         self.ships_panel.draw(screen)
         
         # Sous-titre du panneau
@@ -239,28 +201,23 @@ class ShipPlacement:
         )
         screen.blit(ships_title, ships_title_rect)
         
-        # Dessiner la sélection des navires
         self._draw_ships_selection(screen)
         
-        # Instructions
         instructions = [
             "1. Cliquez sur la grille pour placer le navire sélectionné",
             "2. Utilisez R ou le bouton Tourner pour changer l'orientation",
             "3. Utilisez les flèches < > pour changer de navire"
         ]
-
-        # Position précise au milieu à droite
-        x_position = SCREEN_WIDTH * 0.85  # Ajustez si nécessaire selon la largeur de votre zone rouge
-        y_base = SCREEN_HEIGHT * 0.5  # Centre vertical de l'écran
+        x_position = SCREEN_WIDTH * 0.85
+        y_base = SCREEN_HEIGHT * 0.5
 
         for i, text in enumerate(instructions):
             instr_surface = self.info_font.render(text, True, LIGHT_BLUE)
             instr_rect = instr_surface.get_rect(
-                center=(x_position, y_base - 25 + i * 25)  # Centrage vertical avec un espacement
+                center=(x_position, y_base - 25 + i * 25)
             )
             screen.blit(instr_surface, instr_rect)
         
-        # Afficher le message de statut
         if self.status_text:
             status_surface = self.info_font.render(self.status_text, True, self.status_color)
             status_rect = status_surface.get_rect(
@@ -268,39 +225,31 @@ class ShipPlacement:
             )
             screen.blit(status_surface, status_rect)
         
-        # Dessiner les boutons
         for button in self.buttons:
             button.draw(screen)
             
     def _draw_background_pattern(self, screen):
-        """Dessiner un motif de fond pour l'écran"""
-        # Dessiner des vagues et des points pour simuler l'eau
+        """Dessiner un motif de fond simulant l'eau"""
         for y in range(0, SCREEN_HEIGHT, 30):
             for x in range(0, SCREEN_WIDTH, 30):
-                # Variation de la couleur bleue
                 blue_var = (x + y) % 30
                 color = (0, 20 + blue_var, 60 + blue_var)
-                
-                # Dessiner un petit cercle
                 pygame.draw.circle(
                     screen, 
                     color, 
-                    (x + math.sin(y / 50) * 5, y),  # Utilisation de math.sin au lieu de pygame.math.sin
+                    (x + math.sin(y / 50) * 5, y),
                     2
                 )
             
     def _draw_ships_selection(self, screen):
         """Dessiner l'interface de sélection des navires"""
         panel_rect = self.ships_panel.rect
-        
-        # Position initiale dans le panneau
         ships_x = panel_rect.x + 20
         ships_y = panel_rect.y + 50
         ship_height = 38
         ship_spacing = 5
         
         for i, ship in enumerate(self.player.ships):
-            # Zone de fond pour le navire sélectionné
             if i == self.selected_ship_index:
                 bg_rect = pygame.Rect(
                     panel_rect.x + 10, 
@@ -308,8 +257,6 @@ class ShipPlacement:
                     panel_rect.width - 20,
                     ship_height + 10
                 )
-                
-                # Fond de sélection avec dégradé
                 for j in range(5):
                     color = (30 + j*5, 100 + j*5, 200 + j*5) if not ship.is_placed() else (80, 80, 80)
                     pygame.draw.rect(
@@ -318,8 +265,6 @@ class ShipPlacement:
                         pygame.Rect(bg_rect.x, bg_rect.y + j*2, bg_rect.width, bg_rect.height - j*4),
                         border_radius=5
                     )
-                
-                # Bordure
                 pygame.draw.rect(
                     screen,
                     WHITE,
@@ -328,19 +273,14 @@ class ShipPlacement:
                     border_radius=5
                 )
                 
-            # Griser les navires déjà placés
             text_color = GRAY if ship.is_placed() else WHITE
-            
-            # Nom et taille du navire
             ship_text = f"{ship.name} ({ship.size} cases)"
             text_surface = self.ship_font.render(ship_text, True, text_color)
             text_rect = text_surface.get_rect(
                 midleft=(ships_x, ships_y + i * (ship_height + ship_spacing) + ship_height // 2)
             )
-            
             screen.blit(text_surface, text_rect)
             
-            # Dessiner une représentation visuelle du navire
             cell_size = 8
             ship_viz_x = panel_rect.right - 20 - ship.size * cell_size
             ship_viz_y = ships_y + i * (ship_height + ship_spacing) + ship_height // 2 - cell_size // 2
@@ -371,7 +311,7 @@ class ShipPlacement:
         self._update_ship_preview()
         
     def _update_ship_preview(self):
-        """Mettre à jour l'aperçu du navire en fonction de la position du survol"""
+        """Mettre à jour l'aperçu du navire en fonction du survol de la souris"""
         if self.grid.hover_cell:
             ship = self.player.ships[self.selected_ship_index]
             x, y = self.grid.hover_cell
@@ -383,26 +323,18 @@ class ShipPlacement:
         """Tenter de placer le navire sélectionné à la cellule donnée"""
         ship_index = self.selected_ship_index
         horizontal = self.ship_rotation
-        
-        # Essayer de placer le navire
         success = self.player.place_ship(ship_index, x, y, horizontal)
         
         if success:
-            # Navire placé avec succès
             self.status_text = f"{self.player.ships[ship_index].name} placé avec succès"
             self.status_color = GREEN
-            
-            # Mode réseau : envoyer le placement du navire au serveur
             if self.game.network_mode in ["host", "client"] and self.game.client:
                 self.game.client.place_ship(ship_index, x, y, horizontal)
-                
-            # Sélectionner le prochain navire non placé
             for i, ship in enumerate(self.player.ships):
                 if not ship.is_placed():
                     self.selected_ship_index = i
                     break
         else:
-            # Placement invalide
             self.status_text = "Placement invalide !"
             self.status_color = RED
             
@@ -413,8 +345,6 @@ class ShipPlacement:
         if success:
             self.status_text = "Navires placés aléatoirement"
             self.status_color = GREEN
-            
-            # Mode réseau : envoyer chaque placement de navire au serveur
             if self.game.network_mode in ["host", "client"] and self.game.client:
                 for i, ship in enumerate(self.player.ships):
                     self.game.client.place_ship(i, ship.x, ship.y, ship.horizontal)
@@ -425,26 +355,19 @@ class ShipPlacement:
     def _reset_placement(self):
         """Réinitialiser tous les placements de navires"""
         self.player.reset()
-        
-        # Réinitialiser les navires sur le serveur en mode réseau
         if self.game.network_mode in ["host", "client"] and self.game.client:
-            # Pas de commande de réinitialisation directe, on dira au serveur que nous sommes prêts
-            # quand nous placerons à nouveau les navires
             pass
-            
         self.status_text = "Placement réinitialisé"
         self.status_color = WHITE
         
     def _ready(self):
         """Marquer le joueur comme prêt et passer au jeu"""
-        # Vérifier si tous les navires sont placés
-        all_placed = all(ship.is_placed() for ship in self.player.ships)
-        
-        if not all_placed:
+        # Vérifier que tous les navires sont placés
+        if not all(ship.is_placed() for ship in self.player.ships):
             self.status_text = "Placez tous vos navires avant de continuer !"
             self.status_color = RED
             return
-            
+        
         # Marquer le joueur comme prêt
         self.player.ready = True
         
@@ -456,42 +379,30 @@ class ShipPlacement:
         elif self.game.network_mode == "solo":
             try:
                 if hasattr(self, 'game_state'):
-                        # Marquer le joueur humain comme prêt
-                        self.game_state.player_ready(0)
+                    self.game_state.player_ready(0)
+                    print("Placement des navires de l'IA...")
+                    if self.game_state.players[1].auto_place_ships():
+                        print("Navires de l'IA placés avec succès")
+                        self.game_state.player_ready(1)
                         
-                        print("Placement des navires de l'IA...")
-                        # Placer aléatoirement les navires du bot
-                        if self.game_state.players[1].auto_place_ships():
-                            print("Navires de l'IA placés avec succès")
-                            self.game_state.player_ready(1)  # Marquer le bot comme prêt
-                            
-                            # Définir que c'est le tour du joueur humain
-                            self.game_state.current_player_index = 0
-                            self.game_state.state = YOUR_TURN
-                            
-                            # Passer à l'écran de jeu
-                            self.game.change_screen("game_screen")
-                        else:
-                            print("Erreur: impossible de placer les navires de l'IA")
+                        # Définir que c'est le tour du joueur humain
+                        self.game_state.current_player_index = 0
+                        self.game_state.state = YOUR_TURN
+                        
+                        # Passer à l'écran de jeu
+                        self.game.change_screen("game_screen")
+                    else:
+                        print("Erreur: impossible de placer les navires de l'IA")
                 else:
-                    # Si game_state n'existe pas, l'initialiser
                     print("Initialisation de game_state en mode solo")
                     self.game_state = GameState()
                     self.current_player_index = 0
-                    
-                    # Copier les navires du joueur actuel vers le game_state
                     for i, ship in enumerate(self.player.ships):
                         if ship.is_placed():
                             self.game_state.players[0].place_ship(i, ship.x, ship.y, ship.horizontal)
-                    
-                    # Marquer le joueur humain comme prêt
                     self.game_state.player_ready(0)
-                    
-                    # Placer aléatoirement les navires du bot
                     if self.game_state.players[1].auto_place_ships():
-                        self.game_state.player_ready(1)  # Marquer le bot comme prêt
-                        
-                        # Passer à l'écran de jeu
+                        self.game_state.player_ready(1)
                         self.game.change_screen("game_screen")
                     else:
                         print("Échec du placement des navires du bot")
@@ -503,7 +414,6 @@ class ShipPlacement:
                 self.status_color = RED
         elif self.game.network_mode == "local":
             try:
-                # En mode local (2 joueurs), passer au joueur 2 s'il n'est pas prêt
                 if hasattr(self, 'game_state'):
                     if self.current_player_index == 0 and not self.game_state.players[1].ready:
                         self.current_player_index = 1
@@ -512,13 +422,10 @@ class ShipPlacement:
                         self.title_rect = self.title_text.get_rect(center=(SCREEN_WIDTH // 2, 50))
                         self.status_text = "Joueur 2, placez vos navires"
                         self.status_color = WHITE
-                        
-                        # Réinitialiser la sélection de navire
                         self.selected_ship_index = 0
                         self.ship_rotation = True
                         self.ship_preview = None
                     else:
-                        # Les deux joueurs sont prêts, démarrer la partie
                         self.game_state.player_ready(0)
                         self.game_state.player_ready(1)
                         self.game.change_screen("game_screen")
@@ -530,63 +437,15 @@ class ShipPlacement:
                 traceback.print_exc()
                 self.status_text = "Erreur lors du lancement du jeu"
                 self.status_color = RED
-            
-        # Marquer le joueur comme prêt
-        self.player.ready = True
         
-        # Mode réseau : envoyer le signal prêt au serveur
-        if self.game.network_mode in ["host", "client"] and self.game.client:
-            self.game.client.player_ready()
-            self.status_text = "En attente de l'adversaire..."
-            self.status_color = BLUE
-        elif self.game.network_mode == "solo":
-            # En mode solo (vs IA), placer automatiquement les navires du bot
-            self.game_state.player_ready(0)  # Marquer le joueur humain comme prêt
-            
-            # Placer aléatoirement les navires du bot
-            if self.game_state.players[1].auto_place_ships():
-                self.game_state.player_ready(1)  # Marquer le bot comme prêt
-                
-                # Passer à l'écran de jeu
-                self.game.change_screen("game_screen")
-            else:
-                # En cas d'échec du placement automatique (très rare)
-                print("Erreur: impossible de placer les navires du bot")
-        elif self.game.network_mode == "local":
-            # En mode local (2 joueurs), passer au joueur 2 s'il n'est pas prêt
-            if self.current_player_index == 0 and not self.game_state.players[1].ready:
-                self.current_player_index = 1
-                self.player = self.game_state.players[self.current_player_index]
-                self.title_text = self.title_font.render("Joueur 2 - Placez vos navires", True, WHITE)
-                self.title_rect = self.title_text.get_rect(center=(SCREEN_WIDTH // 2, 50))
-                self.status_text = "Joueur 2, placez vos navires"
-                self.status_color = WHITE
-                
-                # Réinitialiser la sélection de navire
-                self.selected_ship_index = 0
-                self.ship_rotation = True
-                self.ship_preview = None
-            else:
-                # Les deux joueurs sont prêts, démarrer la partie
-                self.game_state.player_ready(0)
-                self.game_state.player_ready(1)
-                self.game.change_screen("game_screen")
-    
     def _return_to_menu(self):
         """Retourner au menu principal"""
-        # Demander confirmation si des navires ont été placés
         if any(ship.is_placed() for ship in self.player.ships):
-            # Dans une version complète, nous pourrions ajouter une boîte de dialogue de confirmation ici
             pass
-            
-        # En mode réseau, déconnecter du serveur
         if self.game.network_mode in ["host", "client"] and self.game.client:
             self.game.client.disconnect()
             self.game.client = None
-            
         if self.game.server:
             self.game.server.stop()
             self.game.server = None
-            
-        # Retourner au menu principal
         self.game.change_screen("main_screen")
