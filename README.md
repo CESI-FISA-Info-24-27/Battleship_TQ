@@ -1,42 +1,66 @@
-# 🔱 Projet Bataille Navale en Ligne
+# 🚢 Bataille Navale - Python
 
-Bienvenue sur notre projet de **jeu de bataille navale multijoueur en ligne** !  
-Développé en **binôme** par **Théo Sutra** et **Quentin Joly**, ce projet a été réalisé en **une semaine** dans le cadre d’un exercice de développement collaboratif.
+Bienvenue dans mon projet de **jeu de bataille navale** en Python ! 
+Ce jeu classique de stratégie vous permet d'affronter l'ordinateur dans une bataille navale captivante directement dans votre terminal.
 
-## 🎯 Objectif du projet
+## 🎮 À propos du jeu
 
-Créer un **jeu jouable à deux en ligne**, via un serveur, inspiré du célèbre jeu de société **Bataille Navale**.  
-Le jeu permet à deux joueurs de :
-- Placer leurs navires sur une grille
-- Se connecter en ligne
-- Jouer chacun leur tour
-- Tenter de couler tous les navires adverses pour gagner la partie
+La **Bataille Navale** est un jeu de stratégie où vous devez découvrir et couler tous les navires de votre adversaire avant qu'il ne détruise les vôtres. Dans cette version:
 
-## ⚙️ Technologies utilisées
+- Affrontez un adversaire IA
+- Placez vos navires automatiquement sur une grille 10x10
+- Jouez au tour par tour avec une interface console intuitive
+- Utilisez les coordonnées (comme A5) pour cibler la flotte ennemie
 
-- 🧠 **Langage principal** : Python 
-- 🌐 **Serveur** : à préciser
-- 🖥️ **Frontend** : Python (Pygames)
-- 🔗 **Communication** : Client/Serveur en temps réel
-- 💾 **Gestion d’état** : Grille, coups joués, bateaux coulés, etc.
+## 🔧 Fonctionnalités
 
-## 🚀 Fonctionnalités principales
+- ⚓ **5 navires différents** : Porte-avions (5 cases), Croiseur (4 cases), Contre-torpilleur (3 cases), Sous-marin (3 cases), et Torpilleur (2 cases)
+- 🎯 **Interface console** claire avec deux grilles affichées côte à côte
+- 🎲 **Placement aléatoire** des navires pour un jeu différent à chaque partie
+- 💥 **Détection automatique** des navires coulés
+- 🏆 **Système de score** détaillé en fin de partie
 
-- Connexion de deux joueurs à une partie en ligne
-- Interface pour positionner ses bateaux
-- Tour par tour avec affichage des tirs réussis ou ratés
-- Système de victoire/défaite
-- Gestion des erreurs de connexion ou d’actions invalides
+## 🚀 Comment jouer
 
-## 📅 Organisation
+1. Assurez-vous d'avoir Python installé sur votre système
+2. Téléchargez le fichier du jeu
+3. Ouvrez un terminal et naviguez jusqu'au dossier contenant le fichier
+4. Exécutez la commande : `python bataille_navale.py`
+5. Suivez les instructions à l'écran pour jouer
+6. Utilisez les coordonnées au format "lettre+chiffre" (ex: A5, B3, J9) pour tirer
 
-Ce projet a été réalisé sur une **durée de 5 jours** avec une répartition claire des tâches :
-- 📌 **Théo Sutra** : Développement Back-end et gestion du projet
-- 📌 **Quentin Joly** : Développement Front-end et réseau
+## 📋 Légende du jeu
 
-## 📝 Pour lancer le projet
+- `N` : Votre navire
+- `X` : Case touchée
+- `O` : Tir manqué
+- ` ` (espace vide) : Case inexplorée ou eau
 
-### 1. Cloner le dépôt
+## 🛠️ Détails techniques
 
-```bash
-[git clone https://github.com/CESI-FISA-Info-24-27/Battleship_TQ]
+- **Langage** : Python pur, sans dépendances externes
+- **Interface** : Console/Terminal
+- **Algorithmes** : Placement aléatoire des navires, intelligence artificielle simple pour l'ordinateur
+
+## 📝 Notes de développement
+
+Ce projet a été développé comme un exercice de programmation en Python, mettant en œuvre plusieurs concepts:
+- Manipulation de tableaux 2D
+- Gestion d'entrées utilisateur et validation
+- Logique de jeu au tour par tour
+- Interface utilisateur en mode texte
+
+## 🔜 Roadmap prévue
+
+- Amélioration de l'IA de l'ordinateur
+- Ajout d'un mode multijoueur en réseau
+- Interface graphique améliorée
+- Personnalisation du placement des navires par le joueur
+
+## 👨‍💻 Auteur
+
+Ce projet a été développé par Quentin et Théo
+
+---
+
+Amusez-vous bien et bonne chance pour couler la flotte ennemie! 🎖️
