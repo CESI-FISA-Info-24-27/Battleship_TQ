@@ -54,7 +54,7 @@ class ShipPlacement:
         self.ship_preview = None
         
         # Panneau pour la sélection des navires
-        ships_panel_width = 220
+        ships_panel_width = 300
         ships_panel_height = 280
         ships_panel_x = 20
         ships_panel_y = 150
@@ -68,15 +68,18 @@ class ShipPlacement:
         button_width = 180
         button_height = 45
         button_margin = 15
-        
+
         # Positions des boutons
-        grid_bottom = grid_y + (GRID_SIZE + 1) * CELL_SIZE + 20
-        buttons_centerx = grid_x + (GRID_SIZE + 1) * CELL_SIZE // 2
-        
+        grid_bottom = grid_y + (GRID_SIZE * CELL_SIZE)  # Bas de la grille
+
+        # Calcul de la position centrale des boutons
+        total_buttons_width = 2 * button_width + button_margin
+        buttons_start_x = (SCREEN_WIDTH - total_buttons_width) // 2
+
         # Bouton de rotation
         self.rotate_button = Button(
-            buttons_centerx - button_width - button_margin,
-            grid_bottom,
+            buttons_start_x,
+            grid_bottom + 50,  # Augmenté de 20 à 50
             button_width,
             button_height,
             "Tourner (R)",
@@ -85,11 +88,11 @@ class ShipPlacement:
             border_radius=10,
             bg_color=BLUE
         )
-        
+
         # Bouton de placement aléatoire
         self.random_button = Button(
-            buttons_centerx + button_margin,
-            grid_bottom,
+            buttons_start_x + button_width + button_margin,
+            grid_bottom + 50,  # Augmenté de 20 à 50
             button_width,
             button_height,
             "Aléatoire",
@@ -98,11 +101,11 @@ class ShipPlacement:
             border_radius=10,
             bg_color=BLUE
         )
-        
+
         # Bouton de réinitialisation
         self.reset_button = Button(
-            buttons_centerx - button_width - button_margin,
-            grid_bottom + button_height + button_margin,
+            buttons_start_x,
+            grid_bottom + 50 + button_height + button_margin,  # Ajusté également
             button_width,
             button_height,
             "Réinitialiser",
@@ -111,11 +114,11 @@ class ShipPlacement:
             border_radius=10,
             bg_color=RED
         )
-        
+
         # Bouton prêt
         self.ready_button = Button(
-            buttons_centerx + button_margin,
-            grid_bottom + button_height + button_margin,
+            buttons_start_x + button_width + button_margin,
+            grid_bottom + 50 + button_height + button_margin,  # Ajusté également
             button_width,
             button_height,
             "Prêt !",
@@ -124,13 +127,10 @@ class ShipPlacement:
             border_radius=10,
             bg_color=GREEN
         )
-        
+                        
         # Bouton de retour
         self.back_button = BackButton(30, 30, 30, self._return_to_menu)
         
-        # Message d'état
-        self.status_text = "Sélectionnez un navire et placez-le sur la grille"
-        self.status_color = WHITE
         
         # Rassembler les boutons pour faciliter la gestion
         self.buttons = [
@@ -236,24 +236,23 @@ class ShipPlacement:
         
         # Instructions
         instructions = [
-            "Cliquez sur la grille pour placer le navire sélectionné",
-            "Utilisez R ou le bouton Tourner pour changer l'orientation",
-            "Utilisez les flèches ← → pour changer de navire"
+            "1. Cliquez sur la grille pour placer le navire sélectionné",
+            "2. Utilisez R ou le bouton Tourner pour changer l'orientation",
+            "3. Utilisez les flèches < > pour changer de navire"
         ]
-        
+
+        # Position précise au milieu à droite
+        x_position = SCREEN_WIDTH * 0.85  # Ajustez si nécessaire selon la largeur de votre zone rouge
+        y_base = SCREEN_HEIGHT * 0.5  # Centre vertical de l'écran
+
         for i, text in enumerate(instructions):
             instr_surface = self.info_font.render(text, True, LIGHT_BLUE)
+            self.info_font = pygame.font.Font(None, 18)
             instr_rect = instr_surface.get_rect(
-                center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 80 + i * 25)
+                center=(x_position, y_base - 25 + i * 25)  # Centrage vertical avec un espacement
             )
             screen.blit(instr_surface, instr_rect)
-        
-        # Message d'état
-        status_surface = self.info_font.render(self.status_text, True, self.status_color)
-        status_rect = status_surface.get_rect(
-            center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 120)
-        )
-        screen.blit(status_surface, status_rect)
+
         
         # Dessiner les boutons
         for button in self.buttons:
