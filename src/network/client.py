@@ -49,6 +49,8 @@ class Client:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.settimeout(self.network_timeout)
             
+            # Afficher des informations de debug
+            print(f"Tentative de connexion TCP à {self.host}:{self.port}")
             self.logger.info(f"Tentative de connexion à {self.host}:{self.port}")
             
             # Connexion au serveur
@@ -187,17 +189,11 @@ class Client:
         
         # Gérer la déconnexion
         if self.connected:  # Si on n'a pas appelé disconnect() explicitement
-            self.logger.info("Déconnecté du serveur - tentative de reconnexion")
+            self.logger.info("Déconnecté du serveur")
             self.connected = False
             self._close_socket()
             
-            # Tenter une reconnexion si nécessaire
-            if self.reconnect_attempts < self.max_reconnect_attempts:
-                self.reconnect_attempts += 1
-                time.sleep(2)  # Attendre avant de tenter une reconnexion
-                self.connect()
-            else:
-                self.logger.warning("Nombre maximum de tentatives de reconnexion atteint")
+            # Ne pas tenter de reconnexion automatique ici, laisser le contrôle à l'application
     
     def send_action(self, action):
         """

@@ -3,6 +3,7 @@ import threading
 import pickle
 import time
 import logging
+import json
 from ..game.game_state import GameState
 from ..models.network_models import Action, GameStateUpdate
 from ..utils.constants import DEFAULT_PORT
@@ -30,6 +31,9 @@ class Server:
         self.game_state = GameState()
         self.clients = []  # Liste des tuples (connexion, ID_joueur)
         self.lock = threading.Lock()  # Verrou pour modifications thread-safe
+        
+        # Compteur pour assigner des IDs uniques
+        self.player_id_counter = 0
     
     def start(self):
         """
@@ -46,7 +50,7 @@ class Server:
             try:
                 # Lier le socket à l'hôte et au port
                 self.server_socket.bind((self.host, self.port))
-                self.server_socket.listen(2)  # Accepter max 2 joueurs
+                self.server_socket.listen(5)  # Accepter jusqu'à 5 connexions en attente
                 self.running = True
                 
                 # Obtenir l'adresse IP locale de manière robuste
@@ -152,26 +156,35 @@ class Server:
                     # Log du nombre de clients actuels
                     self.logger.info(f"Nombre de clients actuels: {len(self.clients)}")
                     
-                    player_id = len(self.clients)
+                    # Vérifier si on peut attribuer l'ID 0 ou 1
+                    player_id = None
+                    existing_ids = [pid for _, pid in self.clients]
                     
-                    if player_id < 2:  # Accepter uniquement 2 joueurs
-                        self.clients.append((conn, player_id))
-                        
-                        # Envoyer l'ID de joueur
-                        conn.send(pickle.dumps(player_id))
-                        
-                        # Démarrer un thread pour gérer ce client
-                        handler_thread = threading.Thread(
-                            target=self._handle_client,
-                            args=(conn, player_id)
-                        )
-                        handler_thread.daemon = True
-                        handler_thread.start()
-                    else:
-                        # Serveur complet
+                    for possible_id in [0, 1]:
+                        if possible_id not in existing_ids:
+                            player_id = possible_id
+                            break
+                    
+                    # Si les IDs 0 et 1 sont déjà pris, serveur complet
+                    if player_id is None:
                         self.logger.warning(f"Tentative de connexion rejetée : serveur complet ({len(self.clients)} clients connectés)")
                         conn.send(pickle.dumps("SERVER_FULL"))
                         conn.close()
+                        continue
+                    
+                    # Ajouter le client à la liste
+                    self.clients.append((conn, player_id))
+                    
+                    # Envoyer l'ID de joueur
+                    conn.send(pickle.dumps(player_id))
+                    
+                    # Démarrer un thread pour gérer ce client
+                    handler_thread = threading.Thread(
+                        target=self._handle_client,
+                        args=(conn, player_id)
+                    )
+                    handler_thread.daemon = True
+                    handler_thread.start()
             
             except socket.timeout:
                 # Timeout normal, continuer la boucle
