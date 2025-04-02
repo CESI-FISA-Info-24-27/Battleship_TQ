@@ -1,0 +1,68 @@
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>b481376a-7252-4a93-a93c-f6dca715d20c</ProjectGuid>
+    <ProjectHome>.</ProjectHome>
+    <StartupFile>main.py</StartupFile>
+    <SearchPath>
+    </SearchPath>
+    <WorkingDirectory>.</WorkingDirectory>
+    <OutputPath>.</OutputPath>
+    <Name>battleship_tq</Name>
+    <RootNamespace>battleship_tq</RootNamespace>
+    <IsWindowsApplication>False</IsWindowsApplication>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="game\ai_player.py" />
+    <Compile Include="game\constants.py" />
+    <Compile Include="game\game_manager.py" />
+    <Compile Include="game\game_state.py" />
+    <Compile Include="game\grid.py" />
+    <Compile Include="game\player.py" />
+    <Compile Include="game\ship.py" />
+    <Compile Include="game\__init__.py" />
+    <Compile Include="main.py" />
+    <Compile Include="network\client.py" />
+    <Compile Include="network\server.py" />
+    <Compile Include="network\__init__.py" />
+    <Compile Include="ui\animation.py" />
+    <Compile Include="ui\game_over_screen.py" />
+    <Compile Include="ui\game_screen.py" />
+    <Compile Include="ui\main_menu.py" />
+    <Compile Include="ui\online_menu.py" />
+    <Compile Include="ui\ship_placement.py" />
+    <Compile Include="ui\ui_elements.py" />
+    <Compile Include="ui\__init__.py" />
+    <Compile Include="utils\game_timer.py" />
+    <Compile Include="utils\resource_loader.py" />
+    <Compile Include="utils\__init__.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="assets\" />
+    <Folder Include="game\" />
+    <Folder Include="network\" />
+    <Folder Include="ui\" />
+    <Folder Include="utils\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="requirements.txt" />
+  </ItemGroup>
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
+  <!-- Uncomment the CoreCompile target to enable the Build command in
+       Visual Studio and specify your pre- and post-build commands in
+       the BeforeBuild and AfterBuild targets below. -->
+  <!--<Target Name="CoreCompile" />-->
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+</Project>
