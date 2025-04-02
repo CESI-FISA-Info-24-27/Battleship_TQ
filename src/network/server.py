@@ -66,6 +66,10 @@ class Server:
                 # Stocker l'IP locale pour affichage
                 self.local_ip = local_ip
                 
+                # S'assurer que la liste des clients est vide au démarrage
+                with self.lock:
+                    self.clients = []
+                
                 # Démarrer un thread pour accepter les connexions
                 accept_thread = threading.Thread(target=self._accept_connections)
                 accept_thread.daemon = True
@@ -111,6 +115,22 @@ class Server:
         
         self.logger.info("Serveur arrêté")
     
+    def _is_connection_active(self, conn):
+        """
+        Vérifie si une connexion est toujours active
+        
+        Args:
+            conn: Connexion socket à vérifier
+            
+        Returns:
+            True si la connexion est active, False sinon
+        """
+        try:
+            # Vérifier si le descripteur de fichier est valide
+            return conn.fileno() != -1
+        except:
+            return False
+    
     def _accept_connections(self):
         """
         Accepter les connexions des clients
@@ -126,6 +146,12 @@ class Server:
                 
                 # Attribuer un ID de joueur
                 with self.lock:
+                    # Nettoyer la liste des clients inactifs
+                    self.clients = [(c, pid) for c, pid in self.clients if self._is_connection_active(c)]
+                    
+                    # Log du nombre de clients actuels
+                    self.logger.info(f"Nombre de clients actuels: {len(self.clients)}")
+                    
                     player_id = len(self.clients)
                     
                     if player_id < 2:  # Accepter uniquement 2 joueurs
@@ -143,7 +169,7 @@ class Server:
                         handler_thread.start()
                     else:
                         # Serveur complet
-                        self.logger.warning("Tentative de connexion rejetée : serveur complet")
+                        self.logger.warning(f"Tentative de connexion rejetée : serveur complet ({len(self.clients)} clients connectés)")
                         conn.send(pickle.dumps("SERVER_FULL"))
                         conn.close()
             
@@ -215,7 +241,7 @@ class Server:
             self.logger.info(f"Client {player_id} déconnecté")
             
             # Si un joueur se déconnecte, réinitialiser l'état du jeu
-            if self.running and player_id < 2:
+            if self.running:
                 self.logger.info("Un joueur s'est déconnecté, réinitialisation de l'état du jeu")
                 with self.lock:
                     self.game_state.reset()
