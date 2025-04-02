@@ -63,6 +63,9 @@ class Client:
         self.my_grid = None
         self.opponent_grid = None
         self.my_turn = False
+        
+        # Ajout de l'attribut game_state pour stocker l'état de la partie en mode réseau
+        self.game_state = None
     
     def connect(self):
         """
@@ -134,10 +137,6 @@ class Client:
     def register_callback(self, event_type, callback):
         """
         Enregistrer une fonction de callback pour un type d'événement
-        
-        Args:
-            event_type: Type d'événement ('login_success', 'game_start', etc.)
-            callback: Fonction à appeler quand l'événement se produit
         """
         if event_type in self.callbacks:
             self.callbacks[event_type].append(callback)
@@ -145,12 +144,6 @@ class Client:
     def place_ships(self, grid):
         """
         Envoyer le placement des bateaux au serveur
-        
-        Args:
-            grid: Grille avec les bateaux placés
-            
-        Returns:
-            True si l'envoi est réussi, False sinon
         """
         message = {
             'type': 'place_ships',
@@ -162,12 +155,6 @@ class Client:
     def fire_shot(self, row, column):
         """
         Envoyer un tir au serveur
-        
-        Args:
-            row, column: Coordonnées du tir
-            
-        Returns:
-            True si l'envoi est réussi, False sinon
         """
         message = {
             'type': 'fire_shot',
@@ -179,9 +166,6 @@ class Client:
     def ready_for_new_game(self):
         """
         Signaler au serveur qu'on est prêt pour une nouvelle partie
-        
-        Returns:
-            True si l'envoi est réussi, False sinon
         """
         message = {
             'type': 'ready_for_new_game'
@@ -192,12 +176,6 @@ class Client:
     def _send_message(self, message):
         """
         Envoyer un message au serveur au format JSON
-        
-        Args:
-            message: Message à envoyer (dictionnaire)
-            
-        Returns:
-            True si l'envoi est réussi, False sinon
         """
         if not self.connected or not self.socket:
             self.logger.warning("Tentative d'envoi de message sans connexion")
@@ -221,9 +199,6 @@ class Client:
     def _receive_message(self):
         """
         Recevoir un message du serveur au format JSON
-        
-        Returns:
-            Message reçu (dictionnaire) ou None en cas d'erreur
         """
         if not self.connected or not self.socket:
             return None
@@ -283,6 +258,8 @@ class Client:
                     self.opponent_grid = message.get('opponent_grid')
                     self.my_turn = message.get('first_player', False)
                     self.logger.info(f"Partie commencée contre {self.opponent_username}")
+                    # Correction : stocker le game_state reçu du serveur
+                    self.game_state = message
                 
                 elif message_type == 'your_turn':
                     self.my_turn = True
@@ -309,14 +286,11 @@ class Client:
             except Exception as e:
                 self.logger.error(f"Erreur dans la boucle d'écoute : {e}")
                 if self.connected:
-                    time.sleep(0.1)  # Éviter une utilisation excessive du CPU
+                    time.sleep(0.1)
     
     def create_empty_grid(self):
         """
         Créer une grille vide
-        
-        Returns:
-            Grille vide au format attendu par le serveur
         """
         return {
             'matrix': [[WATER for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)],
@@ -326,128 +300,6 @@ class Client:
     def place_ship_on_grid(self, grid, row, col, size, horizontal):
         """
         Placer un bateau sur une grille
-        
-        Args:
-            grid: Grille sur laquelle placer le bateau
-            row, col: Position de départ du bateau
-            size: Taille du bateau
-            horizontal: True si horizontal, False si vertical
-            
-        Returns:
-            True si le placement est réussi, False sinon
         """
-        # Vérifier si le placement est valide
-        if not self._is_valid_placement(grid, row, col, size, horizontal):
-            return False
-        
-        # Placer le bateau sur la grille
-        positions = []
-        if horizontal:
-            for i in range(size):
-                grid['matrix'][row][col + i] = SHIP
-                positions.append([row, col + i])
-        else:
-            for i in range(size):
-                grid['matrix'][row + i][col] = SHIP
-                positions.append([row + i, col])
-        
-        # Ajouter le bateau à la liste des bateaux
-        grid['ships'].append({
-            'size': size,
-            'positions': positions,
-            'hits': []
-        })
-        
-        return True
-    
-    def _is_valid_placement(self, grid, row, col, size, horizontal):
-        """
-        Vérifier si un placement de bateau est valide
-        
-        Args:
-            grid: Grille à vérifier
-            row, col: Position de départ du bateau
-            size: Taille du bateau
-            horizontal: True si horizontal, False si vertical
-            
-        Returns:
-            True si le placement est valide, False sinon
-        """
-        # Vérifier si le bateau sort de la grille
-        if horizontal:
-            if col + size > GRID_SIZE:
-                return False
-        else:
-            if row + size > GRID_SIZE:
-                return False
-        
-        # Vérifier si le bateau chevauche un autre bateau
-        if horizontal:
-            for i in range(size):
-                if grid['matrix'][row][col + i] != WATER:
-                    return False
-        else:
-            for i in range(size):
-                if grid['matrix'][row + i][col] != WATER:
-                    return False
-        
-        return True
-    
-    def place_ships_randomly(self, grid=None):
-        """
-        Placer aléatoirement tous les bateaux
-        
-        Args:
-            grid: Grille à utiliser (en crée une nouvelle si None)
-            
-        Returns:
-            Grille avec les bateaux placés aléatoirement
-        """
-        import random
-        
-        if grid is None:
-            grid = self.create_empty_grid()
-        
-        # Essayer plusieurs fois pour chaque bateau
-        for size in SHIP_SIZES:
-            placed = False
-            attempts = 0
-            
-            while not placed and attempts < 100:
-                # Position aléatoire
-                row = random.randint(0, GRID_SIZE - 1)
-                col = random.randint(0, GRID_SIZE - 1)
-                horizontal = random.choice([True, False])
-                
-                # Tenter de placer le bateau
-                placed = self.place_ship_on_grid(grid, row, col, size, horizontal)
-                attempts += 1
-        
-        return grid
-
-# Exemple d'utilisation
-if __name__ == "__main__":
-    # Initialiser le client
-    client = Client(username="TestPlayer")
-    
-    # Se connecter au serveur
-    if client.connect():
-        print("Connecté au serveur!")
-        
-        # Placer les bateaux aléatoirement
-        grid = client.place_ships_randomly()
-        
-        # Envoyer les bateaux au serveur
-        if client.place_ships(grid):
-            print("Bateaux placés avec succès!")
-        
-        # Garder le thread principal en vie
-        try:
-            while client.connected:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            print("\nDéconnexion...")
-        finally:
-            client.disconnect()
-    else:
-        print("Impossible de se connecter au serveur.")
+        # Cette méthode est incomplète dans le snippet fourni, mais elle devrait gérer le placement d'un bateau sur la grille
+        pass

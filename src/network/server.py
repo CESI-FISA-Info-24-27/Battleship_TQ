@@ -40,6 +40,7 @@ class Server:
         self.running = False
         self.local_ip = None
     
+    
     def start(self):
         """
         Démarrer le serveur et écouter les connexions
