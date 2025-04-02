@@ -1,225 +1,453 @@
 import socket
 import threading
-import pickle
+import json
 import time
 import logging
-from ..utils.constants import DEFAULT_HOST, DEFAULT_PORT
-from ..models.network_models import Action
+
+# Configuration client - PORT FIXÉ À 65432
+DEFAULT_HOST = 'localhost'
+DEFAULT_PORT = 65432  # Port explicitement défini à 65432
+TIMEOUT = 30  # Timeout en secondes
+
+# Constantes pour la grille
+WATER = '~'
+SHIP = 'B'
+MISSED_SHOT = 'X'
+HIT_SHOT = 'O'
+GRID_SIZE = 10
+SHIP_SIZES = [5, 4, 3, 3, 2]
 
 class Client:
     """
-    Client class for handling network connections to the game server
+    Client pour se connecter au serveur de bataille navale
     """
     
-    def __init__(self, host=DEFAULT_HOST, port=DEFAULT_PORT):
+    def __init__(self, username="Player", host=DEFAULT_HOST, port=DEFAULT_PORT):
         # Configuration du logging
-        logging.basicConfig(
-            level=logging.INFO, 
-            format='%(asctime)s - %(levelname)s - %(message)s'
-        )
-        self.logger = logging.getLogger(__name__)
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+        self.logger = logging.getLogger("BattleshipClient")
         
-        # Paramètres de connexion
+        # Informations de connexion
+        self.username = username
         self.host = host
-        self.port = port
+        self.port = port  # Ce port devrait être 65432 par défaut
+        
+        # Vérification explicite du port
+        if self.port != 65432:
+            self.logger.warning(f"Port incorrect détecté: {self.port}, utilisation du port 65432 à la place")
+            self.port = 65432
+        
+        self.client_id = None
+        
+        # État de la connexion
         self.socket = None
         self.connected = False
-        self.player_id = None
-        self.game_state = None
+        self.listener_thread = None
         
-        # Synchronisation et gestion des threads
-        self.lock = threading.Lock()
-        self.callback = None
-        self.network_timeout = 15  # Augmentation du timeout
-        self.reconnect_attempts = 0
-        self.max_reconnect_attempts = 3
+        # Callbacks pour les événements
+        self.callbacks = {
+            'login_success': [],
+            'ships_placed': [],
+            'waiting_opponent': [],
+            'game_start': [],
+            'your_turn': [],
+            'shot_result': [],
+            'opponent_shot': [],
+            'game_over': [],
+            'opponent_disconnected': [],
+            'error': []
+        }
         
+        # État du jeu
+        self.opponent_username = ""
+        self.my_grid = None
+        self.opponent_grid = None
+        self.my_turn = False
+    
     def connect(self):
         """
-        Tenter de se connecter au serveur avec des mécanismes de gestion d'erreurs améliorés
+        Se connecter au serveur
         
         Returns:
             True si la connexion est réussie, False sinon
         """
         try:
-            # Créer un nouveau socket
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.settimeout(self.network_timeout)
-            
+            # Vérification explicite du port
+            if self.port != 65432:
+                self.logger.warning(f"Correction du port: {self.port} -> 65432")
+                self.port = 65432
+                
+            print(f"Tentative de connexion TCP à {self.host}:{self.port}")
             self.logger.info(f"Tentative de connexion à {self.host}:{self.port}")
             
-            # Connexion au serveur
+            # Créer le socket
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.settimeout(TIMEOUT)
+            
+            # Se connecter au serveur
             self.socket.connect((self.host, self.port))
-            
-            # Recevoir l'ID du joueur
-            data = self.socket.recv(4096)
-            if not data:
-                self.logger.warning("Aucune donnée reçue du serveur")
-                self.socket.close()
-                return False
-            
-            player_id = pickle.loads(data)
-            
-            if player_id == "SERVER_FULL":
-                self.logger.warning("Le serveur est complet")
-                self.socket.close()
-                return False
-            
-            # Connexion réussie
-            self.player_id = player_id
             self.connected = True
-            self.reconnect_attempts = 0
             
-            # Démarrer un thread pour recevoir les mises à jour
-            receive_thread = threading.Thread(target=self._receive_updates)
-            receive_thread.daemon = True
-            receive_thread.start()
+            # Envoyer les informations de login
+            login_message = {
+                'type': 'login',
+                'username': self.username
+            }
             
-            self.logger.info(f"Connecté avec succès en tant que joueur {self.player_id}")
+            if not self._send_message(login_message):
+                self.logger.error("Erreur lors de l'envoi du message de login")
+                self.disconnect()
+                return False
+            
+            # Démarrer le thread d'écoute
+            self.listener_thread = threading.Thread(target=self._listen_for_messages)
+            self.listener_thread.daemon = True
+            self.listener_thread.start()
+            
             return True
-        
+            
         except socket.timeout:
             self.logger.error(f"Délai de connexion dépassé pour {self.host}:{self.port}")
-            self._close_socket()
             return False
-        
         except ConnectionRefusedError:
             self.logger.error(f"Connexion refusée par {self.host}:{self.port}")
-            self._close_socket()
             return False
-        
         except Exception as e:
             self.logger.error(f"Erreur de connexion : {e}")
-            self._close_socket()
             return False
     
-    def _close_socket(self):
-        """Fermer proprement le socket"""
+    def disconnect(self):
+        """
+        Se déconnecter du serveur
+        """
+        self.connected = False
+        
         if self.socket:
             try:
                 self.socket.close()
             except:
                 pass
             self.socket = None
-    
-    def disconnect(self):
-        """Déconnecter proprement le client"""
-        self.logger.info("Déconnexion du serveur")
-        self.connected = False
-        self._close_socket()
-    
-    def set_callback(self, callback):
-        """
-        Définir une fonction de callback pour les mises à jour d'état de jeu
         
-        Args:
-            callback: Fonction prenant game_state comme paramètre
-        """
-        self.callback = callback
-    
-    def _receive_updates(self):
-        """
-        Recevoir et traiter les mises à jour d'état de jeu du serveur
-        """
-        while self.connected:
-            try:
-                # Recevoir les données
-                data = self.socket.recv(4096)
-                
-                if not data:
-                    self.logger.warning("Aucune donnée reçue du serveur")
-                    break
-                
-                # Désérialiser la mise à jour
-                update = pickle.loads(data)
-                
-                # Mettre à jour l'état du jeu de manière thread-safe
-                with self.lock:
-                    self.game_state = update.game_state
-                
-                # Appeler le callback si défini
-                if self.callback:
-                    self.callback(self.game_state)
-                
-                # Réinitialiser les tentatives de reconnexion
-                self.reconnect_attempts = 0
-            
-            except (ConnectionResetError, ConnectionAbortedError):
-                self.logger.warning("Connexion réinitialisée par le serveur")
-                break
-            
-            except socket.timeout:
-                self.logger.info("Délai de socket dépassé")
-                continue
-            
-            except Exception as e:
-                self.logger.error(f"Erreur lors de la réception des mises à jour : {e}")
-                time.sleep(0.1)  # Éviter une utilisation CPU excessive
-        
-        # Gérer la déconnexion
         self.logger.info("Déconnecté du serveur")
-        self.connected = False
-        self._close_socket()
     
-    def send_action(self, action):
+    def register_callback(self, event_type, callback):
         """
-        Envoyer une action au serveur
+        Enregistrer une fonction de callback pour un type d'événement
         
         Args:
-            action: Objet Action à envoyer
+            event_type: Type d'événement ('login_success', 'game_start', etc.)
+            callback: Fonction à appeler quand l'événement se produit
+        """
+        if event_type in self.callbacks:
+            self.callbacks[event_type].append(callback)
+    
+    def place_ships(self, grid):
+        """
+        Envoyer le placement des bateaux au serveur
+        
+        Args:
+            grid: Grille avec les bateaux placés
             
         Returns:
-            True si envoyé avec succès, False sinon
+            True si l'envoi est réussi, False sinon
         """
-        if not self.connected:
-            self.logger.warning("Tentative d'envoi d'action sans connexion")
+        message = {
+            'type': 'place_ships',
+            'grid': grid
+        }
+        
+        return self._send_message(message)
+    
+    def fire_shot(self, row, column):
+        """
+        Envoyer un tir au serveur
+        
+        Args:
+            row, column: Coordonnées du tir
+            
+        Returns:
+            True si l'envoi est réussi, False sinon
+        """
+        message = {
+            'type': 'fire_shot',
+            'position': [row, column]
+        }
+        
+        return self._send_message(message)
+    
+    def ready_for_new_game(self):
+        """
+        Signaler au serveur qu'on est prêt pour une nouvelle partie
+        
+        Returns:
+            True si l'envoi est réussi, False sinon
+        """
+        message = {
+            'type': 'ready_for_new_game'
+        }
+        
+        return self._send_message(message)
+    
+    def _send_message(self, message):
+        """
+        Envoyer un message au serveur au format JSON
+        
+        Args:
+            message: Message à envoyer (dictionnaire)
+            
+        Returns:
+            True si l'envoi est réussi, False sinon
+        """
+        if not self.connected or not self.socket:
+            self.logger.warning("Tentative d'envoi de message sans connexion")
             return False
         
         try:
-            self.socket.send(pickle.dumps(action))
+            # Sérialiser le message en JSON
+            message_json = json.dumps(message)
+            message_bytes = message_json.encode('utf-8')
+            
+            # Envoyer d'abord la taille du message (4 octets)
+            size_bytes = len(message_bytes).to_bytes(4, byteorder='big')
+            self.socket.sendall(size_bytes + message_bytes)
+            
             return True
         except Exception as e:
-            self.logger.error(f"Erreur lors de l'envoi de l'action : {e}")
+            self.logger.error(f"Erreur lors de l'envoi du message : {e}")
             self.connected = False
             return False
     
-    def place_ship(self, ship_index, x, y, horizontal):
+    def _receive_message(self):
         """
-        Envoyer une action de placement de navire au serveur
+        Recevoir un message du serveur au format JSON
+        
+        Returns:
+            Message reçu (dictionnaire) ou None en cas d'erreur
+        """
+        if not self.connected or not self.socket:
+            return None
+        
+        try:
+            # Recevoir d'abord la taille du message
+            size_bytes = self.socket.recv(4)
+            if not size_bytes:
+                return None
+            
+            message_size = int.from_bytes(size_bytes, byteorder='big')
+            
+            # Recevoir le message complet
+            message_bytes = b''
+            remaining = message_size
+            
+            while remaining > 0:
+                chunk = self.socket.recv(min(remaining, 4096))
+                if not chunk:
+                    return None
+                message_bytes += chunk
+                remaining -= len(chunk)
+            
+            # Désérialiser le message JSON
+            message_json = message_bytes.decode('utf-8')
+            return json.loads(message_json)
+            
+        except Exception as e:
+            self.logger.error(f"Erreur lors de la réception du message : {e}")
+            self.connected = False
+            return None
+    
+    def _listen_for_messages(self):
+        """
+        Écouter et traiter les messages du serveur en continu
+        """
+        while self.connected:
+            try:
+                message = self._receive_message()
+                
+                if not message:
+                    self.logger.warning("Connexion perdue avec le serveur")
+                    self.connected = False
+                    break
+                
+                # Extraire le type de message
+                message_type = message.get('type')
+                
+                # Mettre à jour l'état du client selon le type de message
+                if message_type == 'login_success':
+                    self.client_id = message.get('id')
+                    self.logger.info(f"Connecté avec succès. ID: {self.client_id}")
+                
+                elif message_type == 'game_start':
+                    self.opponent_username = message.get('opponent', "Adversaire")
+                    self.my_grid = message.get('my_grid')
+                    self.opponent_grid = message.get('opponent_grid')
+                    self.my_turn = message.get('first_player', False)
+                    self.logger.info(f"Partie commencée contre {self.opponent_username}")
+                
+                elif message_type == 'your_turn':
+                    self.my_turn = True
+                    self.logger.info("C'est votre tour")
+                
+                elif message_type == 'shot_result':
+                    self.opponent_grid = message.get('opponent_grid', self.opponent_grid)
+                    self.my_turn = False
+                    self.logger.info(f"Résultat du tir: {message.get('result')}")
+                
+                elif message_type == 'opponent_shot':
+                    self.my_grid = message.get('my_grid', self.my_grid)
+                    self.my_turn = True
+                    self.logger.info(f"L'adversaire a tiré en {message.get('position')}")
+                
+                # Exécuter les callbacks associés au type de message
+                if message_type in self.callbacks:
+                    for callback in self.callbacks[message_type]:
+                        try:
+                            callback(message)
+                        except Exception as e:
+                            self.logger.error(f"Erreur dans un callback : {e}")
+            
+            except Exception as e:
+                self.logger.error(f"Erreur dans la boucle d'écoute : {e}")
+                if self.connected:
+                    time.sleep(0.1)  # Éviter une utilisation excessive du CPU
+    
+    def create_empty_grid(self):
+        """
+        Créer une grille vide
+        
+        Returns:
+            Grille vide au format attendu par le serveur
+        """
+        return {
+            'matrix': [[WATER for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)],
+            'ships': []
+        }
+    
+    def place_ship_on_grid(self, grid, row, col, size, horizontal):
+        """
+        Placer un bateau sur une grille
         
         Args:
-            ship_index: Index du navire dans la liste des navires du joueur
-            x, y: Coordonnées de placement
-            horizontal: True pour placement horizontal, False pour vertical
+            grid: Grille sur laquelle placer le bateau
+            row, col: Position de départ du bateau
+            size: Taille du bateau
+            horizontal: True si horizontal, False si vertical
+            
+        Returns:
+            True si le placement est réussi, False sinon
         """
-        action = Action.create_place_ship(
-            self.player_id, ship_index, x, y, horizontal
-        )
-        return self.send_action(action)
+        # Vérifier si le placement est valide
+        if not self._is_valid_placement(grid, row, col, size, horizontal):
+            return False
+        
+        # Placer le bateau sur la grille
+        positions = []
+        if horizontal:
+            for i in range(size):
+                grid['matrix'][row][col + i] = SHIP
+                positions.append([row, col + i])
+        else:
+            for i in range(size):
+                grid['matrix'][row + i][col] = SHIP
+                positions.append([row + i, col])
+        
+        # Ajouter le bateau à la liste des bateaux
+        grid['ships'].append({
+            'size': size,
+            'positions': positions,
+            'hits': []
+        })
+        
+        return True
     
-    def player_ready(self):
+    def _is_valid_placement(self, grid, row, col, size, horizontal):
         """
-        Signaler que le joueur est prêt
-        """
-        action = Action.create_player_ready(self.player_id)
-        return self.send_action(action)
-    
-    def fire_shot(self, x, y):
-        """
-        Envoyer une action de tir au serveur
+        Vérifier si un placement de bateau est valide
         
         Args:
-            x, y: Coordonnées du tir
+            grid: Grille à vérifier
+            row, col: Position de départ du bateau
+            size: Taille du bateau
+            horizontal: True si horizontal, False si vertical
+            
+        Returns:
+            True si le placement est valide, False sinon
         """
-        action = Action.create_fire_shot(self.player_id, x, y)
-        return self.send_action(action)
+        # Vérifier si le bateau sort de la grille
+        if horizontal:
+            if col + size > GRID_SIZE:
+                return False
+        else:
+            if row + size > GRID_SIZE:
+                return False
+        
+        # Vérifier si le bateau chevauche un autre bateau
+        if horizontal:
+            for i in range(size):
+                if grid['matrix'][row][col + i] != WATER:
+                    return False
+        else:
+            for i in range(size):
+                if grid['matrix'][row + i][col] != WATER:
+                    return False
+        
+        return True
     
-    def send_chat_message(self, message):
+    def place_ships_randomly(self, grid=None):
         """
-        Envoyer un message de chat au serveur
+        Placer aléatoirement tous les bateaux
         
         Args:
-            message: Texte du message de chat
+            grid: Grille à utiliser (en crée une nouvelle si None)
+            
+        Returns:
+            Grille avec les bateaux placés aléatoirement
         """
-        action = Action.create_chat_message(self.player_id, message)
-        return self.send_action(action)
+        import random
+        
+        if grid is None:
+            grid = self.create_empty_grid()
+        
+        # Essayer plusieurs fois pour chaque bateau
+        for size in SHIP_SIZES:
+            placed = False
+            attempts = 0
+            
+            while not placed and attempts < 100:
+                # Position aléatoire
+                row = random.randint(0, GRID_SIZE - 1)
+                col = random.randint(0, GRID_SIZE - 1)
+                horizontal = random.choice([True, False])
+                
+                # Tenter de placer le bateau
+                placed = self.place_ship_on_grid(grid, row, col, size, horizontal)
+                attempts += 1
+        
+        return grid
+
+# Exemple d'utilisation
+if __name__ == "__main__":
+    # Initialiser le client
+    client = Client(username="TestPlayer")
+    
+    # Se connecter au serveur
+    if client.connect():
+        print("Connecté au serveur!")
+        
+        # Placer les bateaux aléatoirement
+        grid = client.place_ships_randomly()
+        
+        # Envoyer les bateaux au serveur
+        if client.place_ships(grid):
+            print("Bateaux placés avec succès!")
+        
+        # Garder le thread principal en vie
+        try:
+            while client.connected:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\nDéconnexion...")
+        finally:
+            client.disconnect()
+    else:
+        print("Impossible de se connecter au serveur.")

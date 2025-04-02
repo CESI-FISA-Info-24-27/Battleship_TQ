@@ -13,6 +13,7 @@ class GameState:
         self.state = PLACING_SHIPS
         self.winner = None
         self.last_shot = None  # (x, y, hit, ship_id, sunk)
+        self.is_solo_mode = False  # Flag pour indiquer le mode solo
         
     def get_current_player(self):
         """Get the player whose turn it is"""
@@ -44,6 +45,7 @@ class GameState:
             
         Returns:
             True if the shot was valid, False otherwise
+            OU (x, y, hit, ship_id, sunk) en mode solo
         """
         # Ensure it's the player's turn
         if self.current_player_index != player_id or self.state not in [YOUR_TURN, OPPONENT_TURN]:
@@ -67,6 +69,10 @@ class GameState:
                 self.state = YOUR_TURN
             else:
                 self.state = OPPONENT_TURN
+        
+        # En mode solo, retourner le tuple complet pour faciliter l'animation
+        if self.is_solo_mode and player_id == 1:  # Si c'est le bot qui tire en mode solo
+            return self.last_shot
                 
         return True
     
@@ -98,7 +104,7 @@ class GameState:
             if hit:
                 ship_id = player.board.grid[y][x]
                 ship = next((s for s in player.board.ships if s.id == ship_id), None)
-                if ship and not ship.is_sunk():
+                if ship and ship.hits < ship.size:  # Vérifie si le navire n'est pas coulé
                     hits.append((x, y))
         
         # Liste des directions possibles pour explorer autour d'un hit
@@ -112,11 +118,17 @@ class GameState:
                     # Vérifier si la case a déjà été touchée
                     if not any(shot_x == x and shot_y == y for shot_x, shot_y, _ in shots):
                         # Tirer dans cette case
-                        hit, ship_id, sunk = self.process_shot(1, x, y)
-                        return (x, y, hit, ship_id, sunk)
+                        shot_result = self.process_shot(1, x, y)
+                        
+                        # Si le résultat est un booléen (True), utilisez last_shot 
+                        if isinstance(shot_result, bool):
+                            if shot_result and self.last_shot:
+                                return self.last_shot
+                        else:
+                            # Si c'est déjà un tuple, retournez-le directement
+                            return shot_result
         
         # Si pas de stratégie spécifique, tirer aléatoirement
-        # Créer une liste de toutes les cases non ciblées
         untargeted = []
         for x in range(GRID_SIZE):
             for y in range(GRID_SIZE):
@@ -126,9 +138,15 @@ class GameState:
         # S'il reste des cases non ciblées, en choisir une aléatoirement
         if untargeted:
             x, y = random.choice(untargeted)
-            hit, ship_id, sunk = self.process_shot(1, x, y)
-            return (x, y, hit, ship_id, sunk)
+            shot_result = self.process_shot(1, x, y)
             
+            # Même logique pour gérer le résultat
+            if isinstance(shot_result, bool):
+                if shot_result and self.last_shot:
+                    return self.last_shot
+            else:
+                return shot_result
+                
         # Si toutes les cases ont été ciblées, la partie devrait être terminée
         return None
         

@@ -364,6 +364,8 @@ class GameScreen:
             import traceback
             traceback.print_exc()
             
+    # Correction pour la méthode _return_to_menu dans src/ui/screens/game_screen.py
+
     def _return_to_menu(self):
         """Return to the main menu"""
         try:
@@ -383,11 +385,10 @@ class GameScreen:
                     
             # Go back to main menu
             print("Retour au menu principal")
-            self.game.change_screen("main_menu")
+            self.game.change_screen("main_screen")  # Corriger "main_menu" en "main_screen"
         except Exception as e:
             print(f"Erreur lors du retour au menu: {e}")
             import traceback
             traceback.print_exc()
-                
-        # Go back to main menu
-        self.game.change_screen("main_screen")
+
+ 

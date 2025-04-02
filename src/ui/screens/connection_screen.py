@@ -1,14 +1,20 @@
 import pygame
 import os
-import math  # Ajout de l'import de la bibliothèque standard math
+import threading
+import time
+import math  # Utilisé pour les effets de dessin
+
 from ...utils.constants import (
     SCREEN_WIDTH, SCREEN_HEIGHT, WHITE, BLACK, BLUE, 
-    RED, GREEN, DARK_BLUE, LIGHT_BLUE
+    RED, GREEN, DARK_BLUE, LIGHT_BLUE, YELLOW
 )
 from ..components.button import Button
 from ..components.back_button import BackButton
 from ..components.panel import Panel
-from ...network.client import Client
+
+# Import du client personnalisé directement au niveau du module
+# Utilisez l'import qui correspond à votre structure de projet
+from src.network.client import Client  # Import absolu (à modifier en fonction de votre structure)
 
 class ConnectionScreen:
     """Écran pour entrer l'adresse IP du serveur à rejoindre"""
@@ -174,7 +180,7 @@ class ConnectionScreen:
         
         # Instructions supplémentaires
         instructions_extra = self.info_font.render(
-            "Exemple: 192.168.1.10:5555", True, LIGHT_BLUE
+            "Exemple: 192.168.1.10:65432", True, LIGHT_BLUE
         )
         instructions_extra_rect = instructions_extra.get_rect(
             center=(SCREEN_WIDTH // 2, self.instructions_rect.bottom + 20)
@@ -233,6 +239,7 @@ class ConnectionScreen:
                 )
             
     def _connect_to_server(self):
+        """Se connecter au serveur"""
         if self.connecting:
             return
             
@@ -240,28 +247,39 @@ class ConnectionScreen:
         self.status_text = "Tentative de connexion..."
         self.status_color = WHITE
         
-        # Séparer l'hôte et le port avec plus de précision
+        # Séparer l'hôte et le port
         host_parts = self.input_text.strip().split(":")
+        
+        host_address = None
+        port = 65432  # Port FIXE à 65432 pour correspondre à l'autre projet
         
         if len(host_parts) == 2:
             host_address = host_parts[0]
             try:
-                port = int(host_parts[1])
+                # On récupère le port mais on force quand même à 65432
+                input_port = int(host_parts[1])
+                if input_port != 65432:
+                    self.status_text = f"Attention: utilisation du port 65432 au lieu de {input_port}"
+                    self.status_color = YELLOW
             except ValueError:
-                port = 5555  # Port par défaut
+                pass
         else:
             host_address = host_parts[0]
-            port = 5555
         
         # Créer un nouveau client avec l'adresse et le port spécifiés
         def connect_thread():
-            import threading
-            import time
-            
             time.sleep(1)  # Animation de connexion
             
-            # Utiliser l'adresse IP exacte fournie
-            self.game.client = Client(host=host_address, port=port)
+            # Message de debug
+            print(f"Tentative de connexion à {host_address}:{port}")
+            
+            # Créer le client avec un port explicite
+            self.game.client = Client(username="Player", host=host_address, port=port)
+            
+            # Forcer une nouvelle vérification du port
+            if hasattr(self.game.client, 'port') and self.game.client.port != 65432:
+                self.game.client.port = 65432
+                print(f"Port corrigé à 65432")
             
             success = self.game.client.connect()
             
@@ -271,7 +289,9 @@ class ConnectionScreen:
                     print("Game state update received")
                     # Logique de mise à jour si nécessaire
                 
-                self.game.client.set_callback(on_game_state_update)
+                # Enregistrer un callback pour le début de la partie
+                self.game.client.register_callback('game_start', 
+                    lambda msg: print(f"Partie commencée contre {msg.get('opponent')}"))
                 
                 # Message et transition
                 self.status_text = "Connexion réussie!"
