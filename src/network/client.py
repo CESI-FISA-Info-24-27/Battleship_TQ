@@ -30,9 +30,12 @@ class Client:
         # Synchronisation et gestion des threads
         self.lock = threading.Lock()
         self.callback = None
-        self.network_timeout = 15  # Augmentation du timeout
+        self.network_timeout = 30  # Augmentation du timeout pour plus de stabilité
         self.reconnect_attempts = 0
         self.max_reconnect_attempts = 3
+        
+        # Thread de réception
+        self.receive_thread = None
         
     def connect(self):
         """
@@ -58,7 +61,12 @@ class Client:
                 self.socket.close()
                 return False
             
-            player_id = pickle.loads(data)
+            try:
+                player_id = pickle.loads(data)
+            except Exception as e:
+                self.logger.error(f"Erreur lors du décodage des données: {e}")
+                self.socket.close()
+                return False
             
             if player_id == "SERVER_FULL":
                 self.logger.warning("Le serveur est complet")
@@ -71,9 +79,9 @@ class Client:
             self.reconnect_attempts = 0
             
             # Démarrer un thread pour recevoir les mises à jour
-            receive_thread = threading.Thread(target=self._receive_updates)
-            receive_thread.daemon = True
-            receive_thread.start()
+            self.receive_thread = threading.Thread(target=self._receive_updates)
+            self.receive_thread.daemon = True
+            self.receive_thread.start()
             
             self.logger.info(f"Connecté avec succès en tant que joueur {self.player_id}")
             return True
@@ -106,7 +114,15 @@ class Client:
         """Déconnecter proprement le client"""
         self.logger.info("Déconnexion du serveur")
         self.connected = False
+        
+        # Attendre un court instant pour que le thread de réception se termine
+        time.sleep(0.2)
+        
         self._close_socket()
+        
+        # Attendre que le thread se termine proprement
+        if self.receive_thread and self.receive_thread.is_alive():
+            self.receive_thread.join(timeout=1.0)
     
     def set_callback(self, callback):
         """
@@ -121,45 +137,67 @@ class Client:
         """
         Recevoir et traiter les mises à jour d'état de jeu du serveur
         """
+        buffer_size = 16384  # Augmentation de la taille du buffer pour des paquets plus grands
+        
         while self.connected:
             try:
                 # Recevoir les données
-                data = self.socket.recv(4096)
+                data = self.socket.recv(buffer_size)
                 
                 if not data:
                     self.logger.warning("Aucune donnée reçue du serveur")
                     break
                 
-                # Désérialiser la mise à jour
-                update = pickle.loads(data)
-                
-                # Mettre à jour l'état du jeu de manière thread-safe
-                with self.lock:
-                    self.game_state = update.game_state
-                
-                # Appeler le callback si défini
-                if self.callback:
-                    self.callback(self.game_state)
-                
-                # Réinitialiser les tentatives de reconnexion
-                self.reconnect_attempts = 0
+                try:
+                    # Désérialiser la mise à jour
+                    update = pickle.loads(data)
+                    
+                    # Mettre à jour l'état du jeu de manière thread-safe
+                    with self.lock:
+                        self.game_state = update.game_state
+                    
+                    # Appeler le callback si défini
+                    if self.callback:
+                        try:
+                            self.callback(self.game_state)
+                        except Exception as callback_error:
+                            self.logger.error(f"Erreur dans le callback: {callback_error}")
+                    
+                    # Réinitialiser les tentatives de reconnexion
+                    self.reconnect_attempts = 0
+                    
+                except pickle.UnpicklingError as e:
+                    self.logger.error(f"Erreur de désérialisation: {e}")
+                    # Continuer à écouter malgré l'erreur
+                    continue
             
-            except (ConnectionResetError, ConnectionAbortedError):
-                self.logger.warning("Connexion réinitialisée par le serveur")
+            except (ConnectionResetError, ConnectionAbortedError) as e:
+                self.logger.warning(f"Connexion interrompue: {e}")
                 break
             
             except socket.timeout:
-                self.logger.info("Délai de socket dépassé")
+                if self.connected:
+                    self.logger.debug("Délai de socket dépassé")
                 continue
             
             except Exception as e:
-                self.logger.error(f"Erreur lors de la réception des mises à jour : {e}")
-                time.sleep(0.1)  # Éviter une utilisation CPU excessive
+                if self.connected:
+                    self.logger.error(f"Erreur lors de la réception des mises à jour : {e}")
+                time.sleep(0.5)  # Pause plus longue pour éviter une utilisation CPU excessive
         
         # Gérer la déconnexion
-        self.logger.info("Déconnecté du serveur")
-        self.connected = False
-        self._close_socket()
+        if self.connected:  # Si on n'a pas appelé disconnect() explicitement
+            self.logger.info("Déconnecté du serveur - tentative de reconnexion")
+            self.connected = False
+            self._close_socket()
+            
+            # Tenter une reconnexion si nécessaire
+            if self.reconnect_attempts < self.max_reconnect_attempts:
+                self.reconnect_attempts += 1
+                time.sleep(2)  # Attendre avant de tenter une reconnexion
+                self.connect()
+            else:
+                self.logger.warning("Nombre maximum de tentatives de reconnexion atteint")
     
     def send_action(self, action):
         """
@@ -176,7 +214,8 @@ class Client:
             return False
         
         try:
-            self.socket.send(pickle.dumps(action))
+            data = pickle.dumps(action)
+            self.socket.send(data)
             return True
         except Exception as e:
             self.logger.error(f"Erreur lors de l'envoi de l'action : {e}")

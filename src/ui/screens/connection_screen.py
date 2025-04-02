@@ -1,6 +1,8 @@
 import pygame
 import os
-import math  # Ajout de l'import de la bibliothèque standard math
+import math
+import threading
+import traceback
 from ...utils.constants import (
     SCREEN_WIDTH, SCREEN_HEIGHT, WHITE, BLACK, BLUE, 
     RED, GREEN, DARK_BLUE, LIGHT_BLUE
@@ -110,6 +112,20 @@ class ConnectionScreen:
             for button in self.buttons:
                 button.handle_event(event)
                 
+        # Gérer les événements personnalisés
+        if event.type == pygame.USEREVENT:
+            if event.action == 'change_screen':
+                self.game.set_network_mode("client")
+                self.game.change_screen(event.screen)
+            elif event.action == 'connection_failed':
+                self.connecting = False
+                self.status_text = event.message
+                self.status_color = RED
+            elif event.action == 'connection_error':
+                self.connecting = False
+                self.status_text = f"Erreur de connexion : {event.message}"
+                self.status_color = RED
+        
         # Gérer la saisie de texte pour l'adresse du serveur
         if event.type == pygame.MOUSEBUTTONDOWN:
             # Activer/désactiver le champ de saisie lors du clic
@@ -233,6 +249,7 @@ class ConnectionScreen:
                 )
             
     def _connect_to_server(self):
+        """Tenter de se connecter au serveur"""
         if self.connecting:
             return
             
@@ -255,44 +272,62 @@ class ConnectionScreen:
         
         # Créer un nouveau client avec l'adresse et le port spécifiés
         def connect_thread():
-            import threading
             import time
             
-            time.sleep(1)  # Animation de connexion
+            try:
+                # Simulation du délai de connexion
+                time.sleep(1)
+                
+                print(f"Tentative de connexion à {host_address}:{port}")
+                
+                # Créer le client
+                self.game.client = Client(host=host_address, port=port)
+                
+                # Tenter de se connecter
+                success = self.game.client.connect()
+                
+                if success:
+                    # Configuration du callback
+                    def on_game_state_update(game_state):
+                        print("Game state update received")
+                    
+                    self.game.client.set_callback(on_game_state_update)
+                    
+                    print("Connexion réussie!")
+                    
+                    # Poster un événement pour changer d'écran
+                    pygame.event.post(pygame.event.Event(pygame.USEREVENT, 
+                                       {'action': 'change_screen', 
+                                        'screen': 'ship_placement'}))
+                else:
+                    # Échec de la connexion
+                    print(f"Échec de la connexion à {host_address}:{port}")
+                    
+                    # Poster un événement d'échec de connexion
+                    pygame.event.post(pygame.event.Event(pygame.USEREVENT, 
+                                       {'action': 'connection_failed', 
+                                        'message': f"Impossible de se connecter à {host_address}:{port}"}))
             
-            # Utiliser l'adresse IP exacte fournie
-            self.game.client = Client(host=host_address, port=port)
-            
-            success = self.game.client.connect()
-            
-            if success:
-                # Configuration supplémentaire en cas de connexion réussie
-                def on_game_state_update(game_state):
-                    print("Game state update received")
-                    # Logique de mise à jour si nécessaire
+            except Exception as e:
+                # Gérer toute autre exception
+                print(f"Erreur de connexion : {e}")
+                traceback.print_exc()
                 
-                self.game.client.set_callback(on_game_state_update)
-                
-                # Message et transition
-                self.status_text = "Connexion réussie!"
-                self.status_color = GREEN
-                
-                time.sleep(0.5)
-                
-                # Changer d'écran dans le thread principal
-                self.game.set_network_mode("client")
-                self.game.change_screen("ship_placement")
-                self.connecting = False
-            else:
-                self.status_text = f"Échec de la connexion à {host_address}:{port}"
-                self.status_color = RED
-                self.game.client = None
-                self.connecting = False
+                # Poster un événement d'erreur
+                pygame.event.post(pygame.event.Event(pygame.USEREVENT, 
+                                   {'action': 'connection_error', 
+                                    'message': str(e)}))
         
         # Lancer la connexion dans un thread séparé
-        connect_thread_obj = threading.Thread(target=connect_thread)
-        connect_thread_obj.daemon = True
-        connect_thread_obj.start()
+        try:
+            connect_thread_obj = threading.Thread(target=connect_thread)
+            connect_thread_obj.daemon = True
+            connect_thread_obj.start()
+        except Exception as e:
+            print(f"Erreur lors du démarrage du thread de connexion : {e}")
+            self.connecting = False
+            self.status_text = f"Erreur : {e}"
+            self.status_color = RED
             
     def _back_to_menu(self):
         """Retourner au menu principal"""
