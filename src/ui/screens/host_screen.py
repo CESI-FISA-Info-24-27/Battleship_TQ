@@ -82,103 +82,67 @@ class HostScreen:
         self.server_start_time = 0
         
     def handle_event(self, event):
-        """Gérer les événements d'entrée"""
-        # Gérer les événements du bouton de retour
         self.back_button.handle_event(event)
-        
-        # Gérer les événements du bouton de copie
         if self.ip_text:
             self.copy_button.handle_event(event)
             
     def update(self):
-        """Mettre à jour l'état de l'écran"""
         self.back_button.update()
         self.copy_button.update()
         
-        # Démarrer le serveur si ce n'est pas déjà fait
         if not self.server_started and not self.connection_problem:
             self._start_server()
             
-        # Vérifier la connexion du client
         if self.server_started and not self.client_connected:
             self.connection_check_timer += 1
-            
-            # Vérifier toutes les 2 secondes (120 frames à 60 FPS)
             if self.connection_check_timer >= 120:
                 self.connection_check_timer = 0
                 if self._check_client_connected():
                     self.client_connected = True
                     self.status_text = "Joueur connecté! Redirection..."
                     self.status_color = GREEN
-                    
-                    # Rediriger vers l'écran de placement après un court délai
                     self._redirect_to_placement()
                 else:
-                    # Après un certain temps sans connexion, afficher un message d'info
                     current_time = time.time()
                     if current_time - self.server_start_time > 60:  # 60 secondes
-                        self.status_text = "Conseil: Vérifiez que le port 5555 est ouvert"
-                                    
-        # Animation des points d'attente
+                        # Correction : afficher le port correct (65432)
+                        self.status_text = "Conseil: Vérifiez que le port 65432 est ouvert"
+                        
         self.waiting_timer += 1
         if self.waiting_timer >= 30:
             self.waiting_timer = 0
             self.waiting_dots = (self.waiting_dots + 1) % 4
-            
             if not self.client_connected and not self.connection_problem:
                 self.status_text = "En attente d'un joueur" + "." * self.waiting_dots
-            
+                
     def render(self, screen):
-        """Rendre l'écran d'attente"""
-        # Fond
         if self.background:
             screen.blit(self.background, (0, 0))
         else:
             screen.fill(BLACK)
-            
-        # Titre
         screen.blit(self.title_text, self.title_rect)
-        
-        # Panneau principal
         self.main_panel.draw(screen)
-        
-        # Adresse IP
         if self.ip_text:
             ip_surface = self.ip_font.render(self.ip_text, True, WHITE)
             ip_rect = ip_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 20))
             screen.blit(ip_surface, ip_rect)
-            
-            # Instructions
             instructions = [
                 "Partagez cette adresse IP avec votre adversaire",
                 "Il devra cliquer sur \"Rejoindre une partie\" et saisir cette adresse"
             ]
-            
             for i, text in enumerate(instructions):
                 instr_surface = self.info_font.render(text, True, LIGHT_BLUE)
-                instr_rect = instr_surface.get_rect(
-                    center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 20 + i * 30)
-                )
+                instr_rect = instr_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 20 + i * 30))
                 screen.blit(instr_surface, instr_rect)
-        
-        # Statut
         status_surface = self.info_font.render(self.status_text, True, self.status_color)
-        status_rect = status_surface.get_rect(
-            center=(SCREEN_WIDTH // 2, self.main_panel.rect.bottom - 50)
-        )
+        status_rect = status_surface.get_rect(center=(SCREEN_WIDTH // 2, self.main_panel.rect.bottom - 50))
         screen.blit(status_surface, status_rect)
-        
-        # Bouton de retour
         self.back_button.draw(screen)
-        
-        # Bouton pour copier l'IP
         if self.ip_text:
             self.copy_button.draw(screen)
             
     def _get_local_ip(self):
-        """Obtenir l'adresse IP locale avec des méthodes de secours"""
         try:
-            # Méthode 1 : utiliser une connexion externe pour déterminer l'interface
             temp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             temp_socket.connect(("8.8.8.8", 80))
             local_ip = temp_socket.getsockname()[0]
@@ -186,65 +150,50 @@ class HostScreen:
             return local_ip
         except:
             try:
-                # Méthode 2 : utiliser gethostbyname
                 return socket.gethostbyname(socket.gethostname())
             except:
                 try:
-                    # Méthode 3 : utiliser gethostname et getaddrinfo
                     hostname = socket.gethostname()
                     for addrinfo in socket.getaddrinfo(hostname, None):
-                        if addrinfo[0] == socket.AF_INET:  # IPv4 uniquement
+                        if addrinfo[0] == socket.AF_INET:
                             ip = addrinfo[4][0]
                             if not ip.startswith('127.'):
                                 return ip
                 except:
                     pass
-                
-                # Si toutes les méthodes échouent, utiliser l'adresse loopback
                 return "127.0.0.1"
             
     def _start_server(self):
-        """Démarrer le serveur de jeu"""
         from src.network.server import Server 
-        
-        # Définir le minuteur de démarrage
         self.server_start_time = time.time()
         
-        # Démarrer le serveur dans un thread pour éviter de bloquer l'interface
         def start_server_thread():
             try:
-                # Créer le serveur avec le port 65432 explicite
                 self.game.server = Server(port=65432)
                 
-                # Vérification explicite que le port est correct
                 if hasattr(self.game.server, 'port') and self.game.server.port != 65432:
                     print(f"AVERTISSEMENT: Port serveur incorrect: {self.game.server.port}. Correction à 65432.")
                     self.game.server.port = 65432
                 
-                # Tenter de démarrer le serveur
                 if self.game.server.start():
-                    # Récupérer l'IP locale
                     if hasattr(self.game.server, 'local_ip'):
                         ip = self.game.server.local_ip
                     else:
                         ip = self._get_local_ip()
                     
-                    # Utiliser explicitement le port 65432
                     port = 65432
                     self.ip_text = f"{ip}:{port}"
                     self.status_text = "Serveur démarré, en attente d'un joueur..."
                     self.status_color = GREEN
                     
-                    # Se connecter aussi en tant que client (joueur 0)
                     self._connect_as_client(ip, port)
+                    self.server_started = True
                 else:
-                    # Échec du démarrage du serveur
                     self.game.server = None
                     self.status_text = "Erreur: Impossible de démarrer le serveur"
                     self.status_color = RED
                     self.connection_problem = True
             except Exception as e:
-                # Capture de toute exception imprévue
                 self.game.server = None
                 self.status_text = f"Erreur serveur: {str(e)}"
                 self.status_color = RED
@@ -253,121 +202,47 @@ class HostScreen:
                 import traceback
                 traceback.print_exc()
         
-        # Lancer le thread
         server_thread = threading.Thread(target=start_server_thread)
         server_thread.daemon = True
         server_thread.start()
 
     def _connect_as_client(self, ip, port):
-        """Se connecter en tant que client au serveur local"""
         from src.network.client import Client 
-        
         def connect_client_thread():
             try:
-                # Forcer l'utilisation du port 65432
-                port = 65432
-                
-                # Créer le client - utiliser localhost au lieu de l'IP externe pour se connecter localement
+                port = 65432  # Forcer l'utilisation du port 65432
                 self.game.client = Client(username="Hôte", host="localhost", port=port)
-                
-                # Vérification explicite que le port est correct
-                if hasattr(self.game.client, 'port') and self.game.client.port != 65432:
-                    print(f"AVERTISSEMENT: Port client incorrect: {self.game.client.port}. Correction à 65432.")
-                    self.game.client.port = 65432
-                
-                # Tenter de se connecter
                 if self.game.client.connect():
-                    self.game.set_network_mode("host")
-                    self.server_started = True
-                    self.connection_attempts = 0
+                    print("Client (hôte) connecté avec succès")
                 else:
-                    # Échec de la connexion
-                    self._handle_connection_failure()
+                    print("Erreur lors de la connexion du client hôte")
             except Exception as e:
-                # Capture de toute exception imprévue
-                self._handle_connection_failure(str(e))
-        
-        # Lancer le thread
+                print(f"Erreur lors de la connexion en tant que client: {e}")
         client_thread = threading.Thread(target=connect_client_thread)
         client_thread.daemon = True
         client_thread.start()
-    
-    def _handle_connection_failure(self, error_msg=None):
-        """Gérer l'échec de connexion"""
-        self.connection_attempts += 1
-        
-        if self.connection_attempts < self.max_connection_attempts:
-            # Réessayer
-            self.status_text = f"Tentative de connexion {self.connection_attempts + 1}/{self.max_connection_attempts}..."
-            self.status_color = YELLOW
-            
-            # Attendre un peu avant de réessayer
-            time.sleep(1)
-            self._connect_as_client("localhost", DEFAULT_PORT)
-        else:
-            # Abandonner après plusieurs tentatives
-            if error_msg:
-                self.status_text = f"Erreur client: {error_msg}"
-            else:
-                self.status_text = "Impossible de se connecter au serveur"
-            self.status_color = RED
-            self.connection_problem = True
-            
-            # Arrêter le serveur si nécessaire
-            if self.game.server:
-                self.game.server.stop()
-                self.game.server = None
-    
+
     def _check_client_connected(self):
-        """Vérifier si un client s'est connecté au serveur"""
-        if not self.game.client or not hasattr(self.game.client, 'game_state'):
-            return False
-            
-        if self.game.client.game_state is None:
-            return False
-            
-        # Vérifier s'il y a deux joueurs et si le second joueur est prêt
-        if (len(self.game.client.game_state.players) >= 2 and 
-            hasattr(self.game.client.game_state.players[1], 'ready') and 
-            self.game.client.game_state.players[1].ready):
+        # Vérifier si le client a reçu le game_state (signal que la partie a commencé)
+        if self.game.client and self.game.client.game_state:
             return True
-            
         return False
-    
+
     def _redirect_to_placement(self):
-        """Rediriger vers l'écran de placement après un court délai"""
-        def redirect():
-            time.sleep(1)
-            self.game.change_screen("ship_placement")
-            
-        thread = threading.Thread(target=redirect)
-        thread.daemon = True
-        thread.start()
-            
-    def _copy_ip_to_clipboard(self):
-        """Copier l'adresse IP dans le presse-papiers"""
-        if self.ip_text:
-            try:
-                import pyperclip
-                pyperclip.copy(self.ip_text)
-                self.status_text = "Adresse IP copiée dans le presse-papiers!"
-                self.status_color = GREEN
-            except:
-                # Fallback si pyperclip n'est pas disponible
-                self.status_text = "Impossible de copier (pyperclip non installé)"
-                self.status_color = RED
-    
+        # Rediriger vers l'écran de placement après une courte attente
+        time.sleep(2)
+        self.game.change_screen("ship_placement")
+        
     def _back_to_menu(self):
-        """Retourner au menu principal"""
-        # Arrêter le serveur
+        # Retourner au menu principal et arrêter le serveur si nécessaire
         if self.game.server:
             self.game.server.stop()
-            self.game.server = None
-            
-        # Déconnecter le client
-        if self.game.client:
-            self.game.client.disconnect()
-            self.game.client = None
-            
-        # Retourner au menu principal
         self.game.change_screen("main_screen")
+        
+    def _copy_ip_to_clipboard(self):
+        try:
+            import pyperclip
+            pyperclip.copy(self.ip_text)
+            print("Adresse IP copiée dans le presse-papiers.")
+        except Exception as e:
+            print(f"Erreur lors de la copie de l'adresse IP: {e}")
