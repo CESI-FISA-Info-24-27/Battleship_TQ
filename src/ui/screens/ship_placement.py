@@ -79,6 +79,19 @@ class ShipPlacement:
             bg_color=BLUE
         )
 
+        # Bouton de difficulté 
+        self.difficulty_button = Button(
+            buttons_start_x,
+            grid_bottom + 50 + button_height + button_margin,
+            button_width * 2 + button_margin,
+            button_height,
+            "Difficulté: Moyenne",
+            self._cycle_difficulty,
+            font_size=24,
+            border_radius=10,
+            bg_color=BLUE
+        )
+
         self.random_button = Button(
             buttons_start_x + button_width + button_margin,
             grid_bottom + 50,
@@ -93,7 +106,7 @@ class ShipPlacement:
 
         self.reset_button = Button(
             buttons_start_x,
-            grid_bottom + 50 + button_height + button_margin,
+            grid_bottom + 50 + 2 * (button_height + button_margin),
             button_width,
             button_height,
             "Réinitialiser",
@@ -105,7 +118,7 @@ class ShipPlacement:
 
         self.ready_button = Button(
             buttons_start_x + button_width + button_margin,
-            grid_bottom + 50 + button_height + button_margin,
+            grid_bottom + 50 + 2 * (button_height + button_margin),
             button_width,
             button_height,
             "Prêt !",
@@ -120,17 +133,39 @@ class ShipPlacement:
         # Message de statut pour l'utilisateur
         self.status_text = ""
         self.status_color = WHITE
+
+        # Gestion des difficultés
+        self.difficulties = ['Facile', 'Moyenne', 'Difficile', 'Expert']
+        self.current_difficulty_index = 1  # Moyenne par défaut
         
         # Rassembler les boutons pour faciliter leur gestion
         self.buttons = [
             self.rotate_button,
             self.random_button,
+            self.difficulty_button,
             self.reset_button,
             self.ready_button
         ]
         
         # Chargement de l'image de fond
         self.background = self._load_background()
+        
+    def _cycle_difficulty(self):
+        """
+        Faire défiler les niveaux de difficulté
+        """
+        self.current_difficulty_index = (self.current_difficulty_index + 1) % len(self.difficulties)
+        difficulty = self.difficulties[self.current_difficulty_index].lower()
+        
+        # Mettre à jour le texte du bouton
+        self.difficulty_button.text = f"Difficulté: {self.difficulties[self.current_difficulty_index]}"
+        
+        # En mode solo, définir la difficulté pour le GameState
+        if self.game.network_mode == "solo" and hasattr(self, 'game_state'):
+            self.game_state.difficulty = difficulty
+        
+        self.status_text = f"Difficulté réglée sur {self.difficulties[self.current_difficulty_index]}"
+        self.status_color = WHITE
         
     def _load_background(self):
         """Charger et redimensionner l'image de fond si disponible"""
