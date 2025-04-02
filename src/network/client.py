@@ -225,7 +225,9 @@ class Client:
             # Désérialiser le message JSON
             message_json = message_bytes.decode('utf-8')
             return json.loads(message_json)
-            
+        except socket.timeout:
+            # En cas de timeout, ne pas considérer cela comme une perte de connexion
+            return "timeout"
         except Exception as e:
             self.logger.error(f"Erreur lors de la réception du message : {e}")
             self.connected = False
@@ -238,7 +240,10 @@ class Client:
         while self.connected:
             try:
                 message = self._receive_message()
-                
+                if message == "timeout":
+                    # Attendre un court instant pour éviter une boucle trop rapide
+                    time.sleep(0.1)
+                    continue
                 if not message:
                     self.logger.warning("Connexion perdue avec le serveur")
                     self.connected = False
@@ -247,7 +252,6 @@ class Client:
                 # Extraire le type de message
                 message_type = message.get('type')
                 
-                # Mettre à jour l'état du client selon le type de message
                 if message_type == 'login_success':
                     self.client_id = message.get('id')
                     self.logger.info(f"Connecté avec succès. ID: {self.client_id}")
@@ -258,7 +262,7 @@ class Client:
                     self.opponent_grid = message.get('opponent_grid')
                     self.my_turn = message.get('first_player', False)
                     self.logger.info(f"Partie commencée contre {self.opponent_username}")
-                    # Correction : stocker le game_state reçu du serveur
+                    # Stocker le game_state reçu du serveur
                     self.game_state = message
                 
                 elif message_type == 'your_turn':
@@ -275,7 +279,7 @@ class Client:
                     self.my_turn = True
                     self.logger.info(f"L'adversaire a tiré en {message.get('position')}")
                 
-                # Exécuter les callbacks associés au type de message
+                # Exécuter les callbacks associés
                 if message_type in self.callbacks:
                     for callback in self.callbacks[message_type]:
                         try:
@@ -287,19 +291,3 @@ class Client:
                 self.logger.error(f"Erreur dans la boucle d'écoute : {e}")
                 if self.connected:
                     time.sleep(0.1)
-    
-    def create_empty_grid(self):
-        """
-        Créer une grille vide
-        """
-        return {
-            'matrix': [[WATER for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)],
-            'ships': []
-        }
-    
-    def place_ship_on_grid(self, grid, row, col, size, horizontal):
-        """
-        Placer un bateau sur une grille
-        """
-        # Cette méthode est incomplète dans le snippet fourni, mais elle devrait gérer le placement d'un bateau sur la grille
-        pass
