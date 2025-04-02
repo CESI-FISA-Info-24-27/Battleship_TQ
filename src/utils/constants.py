@@ -40,7 +40,7 @@ SHIPS = [
 ]
 
 # Network settings
-DEFAULT_PORT = 5555
+DEFAULT_PORT = 65432 
 DEFAULT_HOST = "localhost"
 
 # Game states

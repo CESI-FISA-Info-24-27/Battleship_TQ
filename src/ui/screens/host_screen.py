@@ -205,7 +205,7 @@ class HostScreen:
             
     def _start_server(self):
         """Démarrer le serveur de jeu"""
-        from ...network.server import Server
+        from src.network.server import Server 
         
         # Définir le minuteur de démarrage
         self.server_start_time = time.time()
@@ -213,8 +213,13 @@ class HostScreen:
         # Démarrer le serveur dans un thread pour éviter de bloquer l'interface
         def start_server_thread():
             try:
-                # Créer le serveur
-                self.game.server = Server()
+                # Créer le serveur avec le port 65432 explicite
+                self.game.server = Server(port=65432)
+                
+                # Vérification explicite que le port est correct
+                if hasattr(self.game.server, 'port') and self.game.server.port != 65432:
+                    print(f"AVERTISSEMENT: Port serveur incorrect: {self.game.server.port}. Correction à 65432.")
+                    self.game.server.port = 65432
                 
                 # Tenter de démarrer le serveur
                 if self.game.server.start():
@@ -223,8 +228,9 @@ class HostScreen:
                         ip = self.game.server.local_ip
                     else:
                         ip = self._get_local_ip()
-                        
-                    port = self.game.server.port
+                    
+                    # Utiliser explicitement le port 65432
+                    port = 65432
                     self.ip_text = f"{ip}:{port}"
                     self.status_text = "Serveur démarré, en attente d'un joueur..."
                     self.status_color = GREEN
@@ -251,15 +257,23 @@ class HostScreen:
         server_thread = threading.Thread(target=start_server_thread)
         server_thread.daemon = True
         server_thread.start()
-    
+
     def _connect_as_client(self, ip, port):
         """Se connecter en tant que client au serveur local"""
-        from ...network.client import Client
+        from src.network.client import Client 
         
         def connect_client_thread():
             try:
+                # Forcer l'utilisation du port 65432
+                port = 65432
+                
                 # Créer le client - utiliser localhost au lieu de l'IP externe pour se connecter localement
-                self.game.client = Client(host="localhost", port=port)
+                self.game.client = Client(username="Hôte", host="localhost", port=port)
+                
+                # Vérification explicite que le port est correct
+                if hasattr(self.game.client, 'port') and self.game.client.port != 65432:
+                    print(f"AVERTISSEMENT: Port client incorrect: {self.game.client.port}. Correction à 65432.")
+                    self.game.client.port = 65432
                 
                 # Tenter de se connecter
                 if self.game.client.connect():

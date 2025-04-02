@@ -4,9 +4,9 @@ import json
 import time
 import logging
 
-# Configuration client
+# Configuration client - PORT FIXÉ À 65432
 DEFAULT_HOST = 'localhost'
-DEFAULT_PORT = 65432  # Port utilisé par l'autre projet
+DEFAULT_PORT = 65432  # Port explicitement défini à 65432
 TIMEOUT = 30  # Timeout en secondes
 
 # Constantes pour la grille
@@ -30,7 +30,13 @@ class Client:
         # Informations de connexion
         self.username = username
         self.host = host
-        self.port = port
+        self.port = port  # Ce port devrait être 65432 par défaut
+        
+        # Vérification explicite du port
+        if self.port != 65432:
+            self.logger.warning(f"Port incorrect détecté: {self.port}, utilisation du port 65432 à la place")
+            self.port = 65432
+        
         self.client_id = None
         
         # État de la connexion
@@ -66,6 +72,11 @@ class Client:
             True si la connexion est réussie, False sinon
         """
         try:
+            # Vérification explicite du port
+            if self.port != 65432:
+                self.logger.warning(f"Correction du port: {self.port} -> 65432")
+                self.port = 65432
+                
             print(f"Tentative de connexion TCP à {self.host}:{self.port}")
             self.logger.info(f"Tentative de connexion à {self.host}:{self.port}")
             

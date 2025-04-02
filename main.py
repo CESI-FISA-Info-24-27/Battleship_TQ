@@ -14,93 +14,93 @@ class Game:
         pygame.init()
         pygame.display.set_caption(TITLE)
         
-        # Créer la fenêtre
+        # Create the window
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         
-        # Tenter de charger l'icône si elle existe
+        # Try to load the icon if it exists
         try:
             icon_path = os.path.join("assets", "images", "icon.png")
             if os.path.exists(icon_path):
                 icon = pygame.image.load(icon_path)
                 pygame.display.set_icon(icon)
         except:
-            print("Impossible de charger l'icône")
+            print("Unable to load icon")
         
-        # Initialiser l'horloge pour limiter les FPS
+        # Initialize clock to limit FPS
         self.clock = pygame.time.Clock()
         self.running = True
-        self.current_screen = "main_screen"  # Écran de démarrage (modifié de "main_screen" à "main_screen")
+        self.current_screen = "main_screen"  # Starting screen
         
-        # Initialiser les paramètres de réseau
+        # Initialize network settings
         self.network_mode = None  # "host", "client", or "local"
         self.client = None
         self.server = None
         
-        # Initialiser les écrans
+        # Initialize screens
         self.screens = {
-            "main_screen": MainScreen(self),  # Modifié de "main_screen" à "main_screen"
+            "main_screen": MainScreen(self),
             "connection": ConnectionScreen(self),
             "ship_placement": ShipPlacement(self),
             "game_screen": GameScreen(self),
-            "host_screen": HostScreen(self)  # Nouvel écran d'hôte
+            "host_screen": HostScreen(self)  # New host screen
         }
         
-        # Créer les dossiers d'assets s'ils n'existent pas
+        # Create asset folders if they don't exist
         self._ensure_assets_folders()
         
     def change_screen(self, screen_name):
         """
-        Changer l'écran actif
+        Change the active screen
         
         Args:
-            screen_name: Nom de l'écran à afficher
+            screen_name: Name of the screen to display
         """
         if screen_name in self.screens:
             self.current_screen = screen_name
         else:
-            print(f"Erreur: écran '{screen_name}' non défini")
+            print(f"Error: screen '{screen_name}' not defined")
         
     def set_network_mode(self, mode):
         """
-        Définir le mode réseau du jeu
+        Set the game's network mode
         
         Args:
-            mode: "host", "client", ou "local"
+            mode: "host", "client", or "local"
         """
         self.network_mode = mode
         
     def run(self):
-        """Boucle principale du jeu"""
+        """Main game loop"""
         while self.running:
-            # Gérer les événements
+            # Handle events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
                 
-                # Déléguer la gestion de l'événement à l'écran actif
+                # Delegate event handling to the active screen
                 if self.current_screen in self.screens:
                     self.screens[self.current_screen].handle_event(event)
                 
-            # Mettre à jour l'écran actif
+            # Update the active screen
             if self.current_screen in self.screens:
                 self.screens[self.current_screen].update()
             
-            # Effacer l'écran
+            # Clear the screen
             self.screen.fill(BLACK)
             
-            # Afficher l'écran actif
+            # Render the active screen
             if self.current_screen in self.screens:
                 self.screens[self.current_screen].render(self.screen)
             
-            # Mettre à jour l'affichage
+            # Update display
             pygame.display.flip()
             self.clock.tick(FPS)
             
-        # Nettoyage avant de quitter
+        # Cleanup before quitting
         self._cleanup()
         
     def _cleanup(self):
-        """Nettoyer les ressources avant de quitter"""
+        """Clean up resources before quitting"""
         if self.server:
             self.server.stop()
         if self.client:
@@ -109,27 +109,27 @@ class Game:
         sys.exit()
 
     def _host_game(self):
-        """Héberger une partie en réseau"""
-        self.game.set_network_mode("host")
-        self.game.change_screen("host_screen")  # Aller à l'écran d'attente
+        """Host a network game"""
+        self.set_network_mode("host")
+        self.change_screen("host_screen")  # Go to waiting screen
 
     def _play_solo(self):
-        """Lancer une partie solo contre l'IA"""
-        print("Définition du mode solo")  # Message de débogage
-        self.game.set_network_mode("solo")  # S'assurer que c'est bien "solo", et pas "local"
-        self.game.change_screen("ship_placement")
+        """Start a solo game against AI"""
+        print("Setting solo mode")  # Debug message
+        self.set_network_mode("solo")  # Ensure it's "solo", not "local"
+        self.change_screen("ship_placement")
             
     def _ensure_assets_folders(self):
-        """S'assurer que les dossiers d'assets existent"""
-        # Créer les dossiers necessaires s'ils n'existent pas
+        """Ensure asset folders exist"""
+        # Create necessary folders if they don't exist
         asset_folders = ["assets", "assets/images", "assets/sounds", "assets/fonts"]
         for folder in asset_folders:
             if not os.path.exists(folder):
                 try:
                     os.makedirs(folder)
                 except:
-                    print(f"Impossible de créer le dossier: {folder}")
-
+                    print(f"Unable to create folder: {folder}")
+    
 if __name__ == "__main__":
     game = Game()
     game.run()
