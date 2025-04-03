@@ -13,83 +13,109 @@ class GameScreen:
         self.game_manager = game_manager
         
         # Polices
-        self.title_font = pygame.font.SysFont("Arial", 36, bold=True)
-        self.text_font = pygame.font.SysFont("Arial", 24)
-        self.small_font = pygame.font.SysFont("Arial", 18)
-        self.animation_font = pygame.font.SysFont("Impact", 64, bold=True)
+        self.title_font = pygame.font.SysFont("Arial", 48, bold=True)  # Agrandi
+        self.text_font = pygame.font.SysFont("Arial", 28)  # Agrandi
+        self.small_font = pygame.font.SysFont("Arial", 22)  # Agrandi
+        self.animation_font = pygame.font.SysFont("Impact", 84, bold=True)  # Agrandi
         
-        # Calculer les positions des grilles pour éviter le chevauchement
-        self.calculate_grid_positions()
+        # Calculer les positions des grilles pour centrage
+        grid_width = CELL_SIZE * 10  # Taille d'une grille
+        total_grids_width = grid_width * 2 + 200  # Deux grilles avec un espace entre elles
+        grid_start_x = (SCREEN_WIDTH - total_grids_width) // 2
+        
+        # Coordonnées des grilles
+        self.player_grid_pos = (grid_start_x, 150)
+        self.opponent_grid_pos = (grid_start_x + grid_width + 200, 150)  # 200 pixels d'espace entre les grilles
         
         # Animation de message
         self.animated_text = AnimatedText(self.animation_font)
         
         # Barre de temps
-        self.time_bar = ProgressBar((SCREEN_WIDTH // 2, 50), (400, 20), TURN_TIME)
-    
-    def calculate_grid_positions(self):
-        """Calcule les positions optimales des grilles pour éviter le chevauchement"""
-        grid_width = CELL_SIZE * 10  # Taille d'une grille
-        
-        # Calculer la séparation minimale pour avoir suffisamment d'espace pour les labels et statistiques
-        min_separation = 120
-        
-        # Vérifier si la fenêtre est assez large pour afficher les deux grilles côte à côte
-        available_width = SCREEN_WIDTH - 120  # 60 pixels de marge de chaque côté
-        
-        if available_width >= (2 * grid_width + min_separation):
-            # Cas standard: afficher les grilles côte à côte
-            left_grid_x = (SCREEN_WIDTH - (2 * grid_width + min_separation)) // 2
-            right_grid_x = left_grid_x + grid_width + min_separation
-            
-            self.player_grid_pos = (left_grid_x, 120)
-            self.opponent_grid_pos = (right_grid_x, 120)
-            
-            # Position du panneau central
-            self.center_panel_pos = (left_grid_x + grid_width, 120)
-            self.center_panel_width = min_separation
-            self.layout_type = "horizontal"
-        else:
-            # Si la fenêtre est trop étroite, ajuster pour une mise en page plus compacte
-            # Utiliser toute la largeur disponible
-            margin = 40
-            grid_spacing = (SCREEN_WIDTH - 2 * margin - 2 * grid_width) // 3
-            
-            self.player_grid_pos = (margin + grid_spacing, 120)
-            self.opponent_grid_pos = (SCREEN_WIDTH - margin - grid_spacing - grid_width, 120)
-            
-            # Panneau central plus étroit
-            self.center_panel_pos = (SCREEN_WIDTH // 2 - 50, 120)
-            self.center_panel_width = 100
-            self.layout_type = "compact"
+        self.time_bar = ProgressBar((SCREEN_WIDTH // 2, 90), (600, 25), TURN_TIME, GRID_BLUE, DARK_BLUE)  # Agrandi
     
     def draw(self, screen, background_drawer):
         """Dessine l'écran de jeu"""
         # Fond animé de la mer
         background_drawer()
         
-        # Titre
+        # Titre avec effet d'ombre
         titre = self.title_font.render("BATTLESHIP TQ", True, WHITE)
         shadow = self.title_font.render("BATTLESHIP TQ", True, GRID_BLUE)
-        screen.blit(shadow, (SCREEN_WIDTH // 2 - titre.get_width() // 2 + 2, 22))
-        screen.blit(titre, (SCREEN_WIDTH // 2 - titre.get_width() // 2, 20))
+        screen.blit(shadow, (SCREEN_WIDTH // 2 - titre.get_width() // 2 + 2, 32))
+        screen.blit(titre, (SCREEN_WIDTH // 2 - titre.get_width() // 2, 30))
         
         # Barre de temps pour le tour actuel
         remaining_time = self.game_manager.get_remaining_turn_time()
         self.time_bar.update(remaining_time)
-        self.time_bar.draw(screen, remaining_time < TURN_TIME * 0.3)
+        self.time_bar.draw(screen, remaining_time < TURN_TIME * 0.3)  # Animation quand moins de 30% du temps
         
         # Message indiquant le tour actuel
         turn_text = "Votre tour" if self.game_manager.current_player == "player" else "Tour de l'adversaire"
         turn_color = GREEN if self.game_manager.current_player == "player" else LIGHT_BLUE
         
         turn_info = self.text_font.render(turn_text, True, turn_color)
-        screen.blit(turn_info, (SCREEN_WIDTH // 2 - turn_info.get_width() // 2, 75))
+        screen.blit(turn_info, (SCREEN_WIDTH // 2 - turn_info.get_width() // 2, 120))
         
         # Afficher les grilles
-        grid_y = 120
+        grid_y = 150
         self.game_manager.player.grid.draw(screen, self.player_grid_pos, True)  # Grille du joueur
-        self.game_manager.opponent.grid.draw(screen, self.opponent_grid_pos, False)  # Grille de l'adversaire
+        self.game_manager.opponent.grid.draw(screen, self.opponent_grid_pos, False)  # Grille de l'adversaire (tirs du joueur)
+        
+        # Créer un panneau d'information entre les grilles
+        info_panel_x = self.player_grid_pos[0] + 10 * CELL_SIZE + 20  # Juste après la 1ère grille
+        info_panel_width = self.opponent_grid_pos[0] - info_panel_x - 20  # Largeur disponible entre les grilles
+        info_panel_height = 10 * CELL_SIZE  # Même hauteur que les grilles
+        
+        info_panel = pygame.Surface((info_panel_width, info_panel_height), pygame.SRCALPHA)
+        info_panel.fill((0, 30, 60, 180))
+        pygame.draw.rect(info_panel, GRID_BLUE, (0, 0, info_panel_width, info_panel_height), 2, 10)
+        screen.blit(info_panel, (info_panel_x, grid_y))
+        
+        # Afficher des statistiques dans le panneau central
+        stats_y = grid_y + 20
+        
+        # Statistiques du joueur
+        player_stats = [
+            ("Navires restants:", f"{self.game_manager.player.get_ships_left()}/{len(self.game_manager.player.grid.ships)}", GREEN),
+            ("Navires coulés:", f"{self.game_manager.player.grid.get_sunk_ships_count()}/{len(self.game_manager.player.grid.ships)}", RED)
+        ]
+        
+        # Statistiques de l'adversaire
+        opponent_stats = [
+            ("Navires restants:", f"{len(self.game_manager.opponent.grid.ships) - self.game_manager.opponent.grid.get_sunk_ships_count()}/{len(self.game_manager.opponent.grid.ships)}", GREEN),
+            ("Navires coulés:", f"{self.game_manager.opponent.grid.get_sunk_ships_count()}/{len(self.game_manager.opponent.grid.ships)}", RED)
+        ]
+        
+        # Afficher les stats du joueur
+        panel_center_x = info_panel_x + info_panel_width // 2
+        title_text = self.text_font.render("STATISTIQUES", True, WHITE)
+        screen.blit(title_text, (panel_center_x - title_text.get_width() // 2, stats_y))
+        
+        stats_y += 50
+        player_title = self.text_font.render("VOUS", True, GREEN)
+        screen.blit(player_title, (panel_center_x - player_title.get_width() // 2, stats_y))
+        
+        stats_y += 40
+        for i, (label, value, color) in enumerate(player_stats):
+            label_text = self.small_font.render(label, True, WHITE)
+            value_text = self.small_font.render(value, True, color)
+            
+            x_offset = panel_center_x - (label_text.get_width() + value_text.get_width() + 10) // 2
+            screen.blit(label_text, (x_offset, stats_y + i * 30))
+            screen.blit(value_text, (x_offset + label_text.get_width() + 10, stats_y + i * 30))
+        
+        stats_y += 80
+        opponent_title = self.text_font.render("ADVERSAIRE", True, LIGHT_BLUE)
+        screen.blit(opponent_title, (panel_center_x - opponent_title.get_width() // 2, stats_y))
+        
+        stats_y += 40
+        for i, (label, value, color) in enumerate(opponent_stats):
+            label_text = self.small_font.render(label, True, WHITE)
+            value_text = self.small_font.render(value, True, color)
+            
+            x_offset = panel_center_x - (label_text.get_width() + value_text.get_width() + 10) // 2
+            screen.blit(label_text, (x_offset, stats_y + i * 30))
+            screen.blit(value_text, (x_offset + label_text.get_width() + 10, stats_y + i * 30))
         
         # Légendes des grilles
         grid_titles = [
@@ -98,50 +124,42 @@ class GameScreen:
         ]
         
         for texte, pos in grid_titles:
-            # Panel de fond pour le titre
+            # Halo
             title_text = self.text_font.render(texte, True, WHITE)
-            panel_width = title_text.get_width() + 20
-            panel_height = title_text.get_height() + 10
+            halo_surf = pygame.Surface((title_text.get_width() + 20, title_text.get_height() + 10), pygame.SRCALPHA)
+            halo_surf.fill((0, 30, 60, 160))
+            pygame.draw.rect(halo_surf, GRID_BLUE, (0, 0, title_text.get_width() + 20, title_text.get_height() + 10), 2, 8)
+            screen.blit(halo_surf, (pos[0] - title_text.get_width() // 2 - 10, pos[1] - title_text.get_height() // 2 - 5))
             
-            title_panel = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
-            title_panel.fill((0, 30, 60, 180))
-            pygame.draw.rect(title_panel, GRID_BLUE, (0, 0, panel_width, panel_height), 2, 5)
-            
-            screen.blit(title_panel, (pos[0] - panel_width // 2, pos[1] - panel_height // 2))
+            # Texte
             screen.blit(title_text, (pos[0] - title_text.get_width() // 2, pos[1] - title_text.get_height() // 2))
         
-        # Statistiques sous chaque grille
-        self._draw_statistics(screen)
-        
         # Panneau inférieur avec légende
-        bottom_panel_y = grid_y + 10 * CELL_SIZE + 30
+        info_panel_bottom = pygame.Surface((SCREEN_WIDTH - 100, 100), pygame.SRCALPHA)
+        info_panel_bottom.fill((0, 20, 40, 180))
+        pygame.draw.rect(info_panel_bottom, GRID_BLUE, (0, 0, SCREEN_WIDTH - 100, 100), 2, 12)
+        screen.blit(info_panel_bottom, (50, SCREEN_HEIGHT - 120))
         
-        # Vérifier si l'espace est suffisant pour le panneau inférieur
-        if bottom_panel_y + 80 < SCREEN_HEIGHT - 20:
-            info_panel = pygame.Surface((SCREEN_WIDTH - 80, 70), pygame.SRCALPHA)
-            info_panel.fill((0, 20, 40, 180))
-            pygame.draw.rect(info_panel, GRID_BLUE, (0, 0, SCREEN_WIDTH - 80, 70), 2, 10)
-            screen.blit(info_panel, (40, bottom_panel_y))
+        # Légende
+        legende_y = SCREEN_HEIGHT - 100
+        screen.blit(self.text_font.render("Légende:", True, WHITE), (70, legende_y))
+        
+        # Icônes de légende avec espacement plus grand
+        legende_items = [
+            ("Navire", DARK_BLUE, (250, legende_y + 15)),
+            ("Touché", RED, (450, legende_y + 15)),
+            ("Manqué", WATER_BLUE, (650, legende_y + 15)),
+            ("Non tiré", WHITE, (850, legende_y + 15))
+        ]
+        
+        for texte, couleur, (x, y) in legende_items:
+            # Fond pour l'échantillon
+            pygame.draw.rect(screen, couleur, (x, y, 30, 30))
+            pygame.draw.rect(screen, WHITE, (x, y, 30, 30), 1)
             
-            # Légende
-            legende_y = bottom_panel_y + 10
-            screen.blit(self.text_font.render("Légende:", True, WHITE), (60, legende_y))
-            
-            # Icônes de légende
-            legende_items = [
-                ("Navire", WHITE, (220, legende_y + 10)),
-                ("Touché", RED, (350, legende_y + 10)),
-                ("Manqué", WATER_BLUE, (480, legende_y + 10)),
-                ("En attente", YELLOW, (610, legende_y + 10))
-            ]
-            
-            for texte, couleur, (x, y) in legende_items:
-                # Carré de couleur
-                pygame.draw.rect(screen, couleur, (x, y, 20, 20), 0 if texte != "Manqué" else 2)
-                
-                # Texte
-                txt = self.small_font.render(texte, True, WHITE)
-                screen.blit(txt, (x + 30, y + 2))
+            # Texte
+            txt = self.small_font.render(texte, True, WHITE)
+            screen.blit(txt, (x + 40, y + 5))
         
         # Afficher le message animé s'il est actif
         if self.game_manager.is_message_active():
@@ -150,69 +168,23 @@ class GameScreen:
         self.animated_text.draw(screen, SCREEN_WIDTH, SCREEN_HEIGHT)
         
         # Vérifier si le tour est écoulé et afficher un avertissement
-        if self.game_manager.get_remaining_turn_time() < 5000 and self.game_manager.current_player == "player":
-            warning_text = self.small_font.render("Attention ! Plus que quelques secondes pour jouer !", True, (255, 100, 50))
-            screen.blit(warning_text, (SCREEN_WIDTH // 2 - warning_text.get_width() // 2, SCREEN_HEIGHT - 50))
+        if self.game_manager.get_remaining_turn_time() < 5000 and self.game_manager.current_player == "player":  # 5 secondes
+            warning_text = self.text_font.render("Attention ! Plus que quelques secondes pour jouer !", True, (255, 100, 50))
+            # Animation de pulsation pour l'avertissement
+            scale = 1.0 + 0.1 * math.sin(time.time() * 10)
+            warning_scaled = pygame.transform.scale(warning_text, 
+                                                 (int(warning_text.get_width() * scale), 
+                                                  int(warning_text.get_height() * scale)))
+            screen.blit(warning_scaled, 
+                       (SCREEN_WIDTH // 2 - warning_scaled.get_width() // 2, 
+                        SCREEN_HEIGHT - 150))
         
         # En mode en ligne, afficher l'état de la connexion
         if self.game_manager.is_online and self.game_manager.network_client:
             connection_status = self.game_manager.network_client.connection_status
             status_color = (50, 255, 100) if "Connecté" in connection_status else (255, 100, 100)
-            status_text = self.small_font.render(f"État: {connection_status}", True, status_color)
-            screen.blit(status_text, (SCREEN_WIDTH - status_text.get_width() - 10, 10))
-    
-    def _draw_statistics(self, screen):
-        """Dessine les statistiques de jeu sous chaque grille"""
-        # Position verticale des statistiques
-        stats_y = self.player_grid_pos[1] + 10 * CELL_SIZE + 10
-        
-        # Statistiques du joueur
-        player_stats = [
-            (f"Restants: {self.game_manager.player.get_ships_left()}/{len(self.game_manager.player.grid.ships)}", GREEN),
-            (f"Coulés: {self.game_manager.player.grid.get_sunk_ships_count()}/{len(self.game_manager.player.grid.ships)}", RED)
-        ]
-        
-        # Statistiques de l'adversaire
-        opponent_stats = [
-            (f"Restants: {len(self.game_manager.opponent.grid.ships) - self.game_manager.opponent.grid.get_sunk_ships_count()}/{len(self.game_manager.opponent.grid.ships)}", GREEN),
-            (f"Coulés: {self.game_manager.opponent.grid.get_sunk_ships_count()}/{len(self.game_manager.opponent.grid.ships)}", RED)
-        ]
-        
-        # Panneaux de statistiques
-        self._draw_stats_panel(screen, "VOTRE FLOTTE", player_stats, 
-                             (self.player_grid_pos[0] + 5 * CELL_SIZE, stats_y))
-        
-        self._draw_stats_panel(screen, "FLOTTE ENNEMIE", opponent_stats, 
-                             (self.opponent_grid_pos[0] + 5 * CELL_SIZE, stats_y))
-    
-    def _draw_stats_panel(self, screen, title, stats, position):
-        """Dessine un panneau de statistiques"""
-        x, y = position
-        
-        # Taille du panneau
-        panel_width = 200
-        panel_height = 70
-        
-        # Fond du panneau
-        panel = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
-        panel.fill((0, 30, 60, 180))
-        pygame.draw.rect(panel, GRID_BLUE, (0, 0, panel_width, panel_height), 1, 5)
-        
-        # Positions
-        title_y = 10
-        stats_y = 35
-        
-        # Titre
-        title_text = self.small_font.render(title, True, WHITE)
-        panel.blit(title_text, (panel_width // 2 - title_text.get_width() // 2, title_y))
-        
-        # Stats
-        for i, (text, color) in enumerate(stats):
-            stat_text = self.small_font.render(text, True, color)
-            panel.blit(stat_text, (panel_width // 2 - stat_text.get_width() // 2, stats_y + i * 20))
-        
-        # Afficher le panneau
-        screen.blit(panel, (x - panel_width // 2, y))
+            status_text = self.small_font.render(f"État réseau: {connection_status}", True, status_color)
+            screen.blit(status_text, (SCREEN_WIDTH - status_text.get_width() - 20, 20))
     
     def handle_event(self, event):
         """Gère les événements de l'écran de jeu"""
