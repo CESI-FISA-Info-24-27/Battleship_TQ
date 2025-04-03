@@ -59,26 +59,53 @@ class Ship:
         self.orientation = 'V' if self.orientation == 'H' else 'H'
     
     def draw(self, screen, x, y, preview=False, valid=True):
-        """Dessine le navire à l'écran de façon simplifiée (carrés blancs/gris)"""
-        color = self.color
-        border_color = WHITE
-        
+        """Dessine le navire à l'écran comme un simple cube blanc"""
+        # Déterminer la couleur en fonction du contexte
         if preview:
-            color = (50, 255, 100) if valid else (255, 50, 50)
+            # Utiliser des couleurs différentes pour l'aperçu
+            color = (50, 255, 100) if valid else (255, 50, 50)  # Vert si valide, rouge sinon
             border_color = color
+        else:
+            # Couleur normale pour les navires placés (blanc)
+            color = WHITE
+            border_color = (200, 200, 200)  # Bordure grise claire
         
-        # Dessiner chaque segment du navire comme un simple rectangle
+        # Dessiner chaque segment du navire comme un simple rectangle blanc
         if self.orientation == 'H':
             for i in range(self.size):
+                # Créer un rectangle pour chaque cellule du navire
                 rect = pygame.Rect(x + i * CELL_SIZE, y, CELL_SIZE, CELL_SIZE)
-                # Dessiner le rectangle plein
-                pygame.draw.rect(screen, color, rect, 0 if not preview else 0)
+                
+                # Remplir le rectangle
+                pygame.draw.rect(screen, color, rect, 0)
+                
                 # Ajouter une bordure
-                pygame.draw.rect(screen, border_color, rect, 2)
+                pygame.draw.rect(screen, border_color, rect, 1)
+                
+                # Ajouter une ligne diagonale pour indiquer un coup si la cellule est touchée
+                if i < len(self.hits) and self.hits[i] and not preview:
+                    pygame.draw.line(screen, (255, 0, 0), 
+                                  (x + i * CELL_SIZE + 5, y + 5),
+                                  (x + i * CELL_SIZE + CELL_SIZE - 5, y + CELL_SIZE - 5), 2)
+                    pygame.draw.line(screen, (255, 0, 0), 
+                                  (x + i * CELL_SIZE + CELL_SIZE - 5, y + 5),
+                                  (x + i * CELL_SIZE + 5, y + CELL_SIZE - 5), 2)
         else:  # Vertical
             for i in range(self.size):
+                # Créer un rectangle pour chaque cellule du navire
                 rect = pygame.Rect(x, y + i * CELL_SIZE, CELL_SIZE, CELL_SIZE)
-                # Dessiner le rectangle plein
-                pygame.draw.rect(screen, color, rect, 0 if not preview else 0)
+                
+                # Remplir le rectangle
+                pygame.draw.rect(screen, color, rect, 0)
+                
                 # Ajouter une bordure
-                pygame.draw.rect(screen, border_color, rect, 2)
+                pygame.draw.rect(screen, border_color, rect, 1)
+                
+                # Ajouter une ligne diagonale pour indiquer un coup si la cellule est touchée
+                if i < len(self.hits) and self.hits[i] and not preview:
+                    pygame.draw.line(screen, (255, 0, 0), 
+                                  (x + 5, y + i * CELL_SIZE + 5),
+                                  (x + CELL_SIZE - 5, y + i * CELL_SIZE + CELL_SIZE - 5), 2)
+                    pygame.draw.line(screen, (255, 0, 0), 
+                                  (x + CELL_SIZE - 5, y + i * CELL_SIZE + 5),
+                                  (x + 5, y + i * CELL_SIZE + CELL_SIZE - 5), 2)

@@ -2,11 +2,11 @@
 import pygame
 
 # Écran
-SCREEN_WIDTH = 1600  # Augmenté de 1200 à 1600
-SCREEN_HEIGHT = 900  # Augmenté de 800 à 900
+SCREEN_WIDTH = 1600
+SCREEN_HEIGHT = 900
 GRID_SIZE = 10
-CELL_SIZE = 50  # Augmenté de 40 à 50
-MARGIN = 80    # Augmenté de 60 à 80
+CELL_SIZE = 50
+MARGIN = 80
 GRID_WIDTH = CELL_SIZE * GRID_SIZE
 GRID_HEIGHT = CELL_SIZE * GRID_SIZE
 
@@ -16,7 +16,7 @@ WHITE = (255, 255, 255)
 DARK_BLUE = (0, 30, 60)      # Fond plus foncé
 GRID_BLUE = (0, 120, 215)    # Grille plus visible
 LIGHT_BLUE = (135, 206, 250) # Bleu clair pour les éléments interactifs
-DEEP_BLUE = (220, 220, 220)  # Modifié pour être gris clair (bateaux)
+DEEP_BLUE = WHITE            # Défini comme blanc pour les bateaux
 WATER_BLUE = (10, 75, 120)   # Couleur de l'eau
 RED = (255, 50, 50)          # Rouge plus vif pour les coups
 GREEN = (50, 255, 100)       # Vert plus vif

@@ -91,61 +91,45 @@ class Grid:
         
         # Dessiner les lignes de la grille
         for i in range(1, self.size):
-            # Lignes horizontales avec un léger effet d'ondulation
-            offset = math.sin(time.time() * 1.5 + i * 0.2)
+            # Lignes horizontales
             pygame.draw.line(screen, GRID_BLUE, 
-                          (x_start, y_start + i * CELL_SIZE + offset),
-                          (x_start + CELL_SIZE * self.size, y_start + i * CELL_SIZE + offset), 1)
+                          (x_start, y_start + i * CELL_SIZE),
+                          (x_start + CELL_SIZE * self.size, y_start + i * CELL_SIZE), 1)
             
             # Lignes verticales
             pygame.draw.line(screen, GRID_BLUE, 
                           (x_start + i * CELL_SIZE, y_start),
                           (x_start + i * CELL_SIZE, y_start + CELL_SIZE * self.size), 1)
         
-        # Dessiner les navires et les tirs
+        # Dessiner d'abord les navires (pour qu'ils soient en dessous des indicateurs de tir)
+        if show_ships:
+            for ship in self.ships:
+                if ship.orientation == 'H':
+                    ship.draw(screen, x_start + ship.col * CELL_SIZE, y_start + ship.row * CELL_SIZE)
+                else:
+                    ship.draw(screen, x_start + ship.col * CELL_SIZE, y_start + ship.row * CELL_SIZE)
+        
+        # Dessiner les tirs
         for row in range(self.size):
             for col in range(self.size):
                 cell_x = x_start + col * CELL_SIZE
                 cell_y = y_start + row * CELL_SIZE
                 cell_rect = pygame.Rect(cell_x, cell_y, CELL_SIZE, CELL_SIZE)
                 
-                # Dessiner les navires - Version simplifiée
-                if self.cells[row][col] == 'N' and show_ships:
-                    ship_drawn = False
-                    
-                    for ship in self.ships:
-                        positions = ship.get_positions()
-                        if (row, col) in positions:
-                            # Dessiner le navire seulement depuis sa position de début
-                            if (row == ship.row and col == ship.col):
-                                x_pos = cell_x
-                                y_pos = cell_y
-                                ship.draw(screen, x_pos, y_pos)
-                                ship_drawn = True
-                                break
-                    
-                    if not ship_drawn:
-                        # Dessiner simplement un carré pour les cellules de navire
-                        pygame.draw.rect(screen, DARK_BLUE, cell_rect)
-                
                 # Dessiner les tirs - Style simplifié
                 if self.shots[row][col] == 'X':
-                    # Case touchée - Fond rouge
-                    pygame.draw.rect(screen, RED, cell_rect)
-                    
-                    # X au centre
-                    pygame.draw.line(screen, WHITE, 
+                    # Case touchée - X rouge
+                    pygame.draw.line(screen, RED, 
                                   (cell_x + 5, cell_y + 5), 
                                   (cell_x + CELL_SIZE - 5, cell_y + CELL_SIZE - 5), 2)
-                    pygame.draw.line(screen, WHITE, 
+                    pygame.draw.line(screen, RED, 
                                   (cell_x + CELL_SIZE - 5, cell_y + 5), 
                                   (cell_x + 5, cell_y + CELL_SIZE - 5), 2)
                 
                 elif self.shots[row][col] == 'O':
                     # Case manquée - Cercle bleu
                     center_x, center_y = cell_x + CELL_SIZE // 2, cell_y + CELL_SIZE // 2
-                    pygame.draw.circle(screen, WATER_BLUE, (center_x, center_y), CELL_SIZE // 3)
-                    pygame.draw.circle(screen, LIGHT_BLUE, (center_x, center_y), CELL_SIZE // 3, 2)
+                    pygame.draw.circle(screen, WATER_BLUE, (center_x, center_y), CELL_SIZE // 3, 2)
                 
                 # Marquage pour les tirs en attente (mode réseau)
                 elif self.shots[row][col] == '?':
@@ -160,25 +144,18 @@ class Grid:
         # Afficher les lettres (A-J) pour les colonnes
         for col in range(self.size):
             lettre = chr(65 + col)
-            # Léger effet de flottement vertical
-            offset_y = 2 * math.sin(time.time() * 1.5 + col * 0.3)
             font = pygame.font.SysFont("Arial", int(CELL_SIZE * 0.4))  # Taille proportionnelle à la cellule
             texte = font.render(lettre, True, WHITE)
             screen.blit(texte, (x_start + col * CELL_SIZE + CELL_SIZE // 2 - texte.get_width() // 2, 
-                             y_start - 40 + offset_y))
+                             y_start - 30))
         
         # Afficher les chiffres (0-9) pour les lignes
         for row in range(self.size):
-            # Léger effet de pulsation pour la taille
-            scale = 1.0 + 0.05 * math.sin(time.time() * 1.5 + row * 0.2)
             font = pygame.font.SysFont("Arial", int(CELL_SIZE * 0.4))
             texte = font.render(str(row), True, WHITE)
-            texte_scaled = pygame.transform.scale(texte, 
-                                          (int(texte.get_width() * scale), 
-                                           int(texte.get_height() * scale)))
-            screen.blit(texte_scaled, 
-                      (x_start - 40, 
-                       y_start + row * CELL_SIZE + CELL_SIZE // 2 - texte_scaled.get_height() // 2))
+            screen.blit(texte, 
+                      (x_start - 30 + (30 - texte.get_width()) // 2, 
+                       y_start + row * CELL_SIZE + CELL_SIZE // 2 - texte.get_height() // 2))
         
         # Afficher l'aperçu du navire en cours de placement
         if preview_ship and preview_pos:
