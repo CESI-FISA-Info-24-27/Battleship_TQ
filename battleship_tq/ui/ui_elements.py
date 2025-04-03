@@ -5,7 +5,7 @@ import time
 from game.constants import WHITE, DARK_BLUE, GRID_BLUE, LIGHT_BLUE
 
 class Button:
-    def __init__(self, text, pos, size=(300, 60), font_size=24, hover_effect=True):
+    def __init__(self, text, pos, size=(400, 70), font_size=28, hover_effect=True):
         self.text = text
         self.x, self.y = pos
         self.width, self.height = size
@@ -64,19 +64,24 @@ class Button:
         return False
 
 class TextBox:
-    def __init__(self, pos, size=(400, 80), font_size=24, bg_color=(0, 30, 60, 180), border_color=GRID_BLUE, border_radius=10):
+    def __init__(self, pos, size=(500, 80), font_size=28, bg_color=(0, 30, 60, 180), border_color=GRID_BLUE, border_radius=10):
         self.x, self.y = pos
         self.width, self.height = size
+        self.rect = pygame.Rect(self.x - self.width // 2, self.y - self.height // 2, self.width, self.height)
         self.bg_color = bg_color
         self.border_color = border_color
         self.border_radius = border_radius
         self.font = pygame.font.SysFont("Arial", font_size)
+        self.active = False
     
-    def draw(self, screen, text, shadow=False, shadow_offset=(2, 2)):
+    def draw(self, screen, text, active=False, shadow=False, shadow_offset=(2, 2)):
+        # Couleur de bordure selon l'état actif
+        border_color = (0, 255, 150) if active else self.border_color
+        
         # Surface semi-transparente pour le fond
         surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
         surf.fill(self.bg_color)
-        pygame.draw.rect(surf, self.border_color, (0, 0, self.width, self.height), 2, self.border_radius)
+        pygame.draw.rect(surf, border_color, (0, 0, self.width, self.height), 2, self.border_radius)
         screen.blit(surf, (self.x - self.width // 2, self.y - self.height // 2))
         
         # Texte
@@ -87,9 +92,18 @@ class TextBox:
         
         text_surface = self.font.render(text, True, WHITE)
         screen.blit(text_surface, (self.x - text_surface.get_width() // 2, self.y - text_surface.get_height() // 2))
+        
+        # Ajouter un curseur clignotant si actif
+        if active and (time.time() * 2) % 2 > 1:
+            cursor_x = self.x - text_surface.get_width() // 2 + text_surface.get_width() + 5
+            if cursor_x > self.x + self.width // 2 - 10:
+                cursor_x = self.x + self.width // 2 - 10
+            pygame.draw.line(screen, WHITE, 
+                          (cursor_x, self.y - self.height // 4), 
+                          (cursor_x, self.y + self.height // 4), 2)
 
 class ProgressBar:
-    def __init__(self, pos, size=(300, 30), max_value=100, color=GRID_BLUE, bg_color=DARK_BLUE):
+    def __init__(self, pos, size=(400, 30), max_value=100, color=GRID_BLUE, bg_color=DARK_BLUE):
         self.x, self.y = pos
         self.width, self.height = size
         self.max_value = max_value
@@ -117,7 +131,18 @@ class ProgressBar:
             
             fill_rect = pygame.Rect(self.x - self.width // 2, self.y - self.height // 2, 
                                    fill_width + pulse_effect, self.height)
-            pygame.draw.rect(screen, self.color, fill_rect, 0, 5)
+            
+            # Si le temps est critique, utiliser une couleur différente
+            fill_color = self.color
+            if self.value < self.max_value * 0.3:
+                fill_color = (255, 100, 50)  # Orange-rouge pour le temps critique
+            
+            pygame.draw.rect(screen, fill_color, fill_rect, 0, 5)
+            
+            # Ajouter un petit effet de brillance
+            highlight = pygame.Surface((fill_width, 5), pygame.SRCALPHA)
+            highlight.fill((255, 255, 255, 80))
+            screen.blit(highlight, (self.x - self.width // 2, self.y - self.height // 2 + 2))
 
 class AnimatedText:
     def __init__(self, font, duration=2.0):
@@ -148,8 +173,8 @@ class AnimatedText:
                 opacity = max(0, int(255 - (elapsed - self.duration / 2) * 510 / self.duration))
             
             # Surface semi-transparente pour le fond
-            fond = pygame.Surface((screen_width, 150), pygame.SRCALPHA)
-            fond.fill((0, 0, 0, min(200, opacity)))  # Fond noir semi-transparent
+            fond = pygame.Surface((screen_width, 200), pygame.SRCALPHA)  # Hauteur augmentée
+            fond.fill((0, 0, 0, min(180, opacity)))  # Fond noir semi-transparent
             
             # Calculer l'échelle avec effet de rebond
             scale = 1.0
@@ -171,16 +196,16 @@ class AnimatedText:
             rect = texte_scaled.get_rect(center=(screen_width // 2, screen_height // 2))
             
             # Ajouter un halo autour du texte
-            glow_surf = pygame.Surface((rect.width + 40, rect.height + 40), pygame.SRCALPHA)
-            glow_color = (*self.color[:3], min(100, opacity))
+            glow_surf = pygame.Surface((rect.width + 60, rect.height + 60), pygame.SRCALPHA)  # Halo plus grand
+            glow_color = (*self.color[:3], min(120, opacity))  # Halo plus visible
             pygame.draw.ellipse(glow_surf, glow_color, 
-                             (0, 0, rect.width + 40, rect.height + 40))
+                             (0, 0, rect.width + 60, rect.height + 60))
             
             # Afficher le fond
-            screen.blit(fond, (0, screen_height // 2 - 75))
+            screen.blit(fond, (0, screen_height // 2 - 100))  # Position adaptée
             
             # Afficher le halo puis le texte
-            screen.blit(glow_surf, (rect.x - 20, rect.y - 20))
+            screen.blit(glow_surf, (rect.x - 30, rect.y - 30))  # Ajusté pour le halo plus grand
             screen.blit(texte_scaled, rect)
         else:
             # Fin de l'animation
@@ -188,4 +213,3 @@ class AnimatedText:
     
     def is_active(self):
         return self.active
-

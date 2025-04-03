@@ -1,6 +1,6 @@
 ﻿# ship.py
 import pygame
-from game.constants import CELL_SIZE, DEEP_BLUE, LIGHT_BLUE
+from game.constants import CELL_SIZE, DEEP_BLUE, LIGHT_BLUE, WHITE
 
 class Ship:
     def __init__(self, name, size, color=DEEP_BLUE):
@@ -59,58 +59,26 @@ class Ship:
         self.orientation = 'V' if self.orientation == 'H' else 'H'
     
     def draw(self, screen, x, y, preview=False, valid=True):
-        """Dessine le navire à l'écran"""
+        """Dessine le navire à l'écran de façon simplifiée (carrés blancs/gris)"""
         color = self.color
+        border_color = WHITE
+        
         if preview:
             color = (50, 255, 100) if valid else (255, 50, 50)
+            border_color = color
         
+        # Dessiner chaque segment du navire comme un simple rectangle
         if self.orientation == 'H':
-            width = CELL_SIZE * self.size
-            height = CELL_SIZE
-            
-            # Corps du bateau
-            rect = pygame.Rect(x, y, width, height)
-            pygame.draw.rect(screen, color, rect, 0 if not preview else 2)
-            
-            # Pont supérieur
-            pont_height = height // 2
-            pygame.draw.rect(screen, 
-                           (min(255, color[0] + 40), min(255, color[1] + 40), min(255, color[2] + 40)),
-                           (x + width//10, y + height//4, width - width//5, pont_height), 
-                           0 if not preview else 1)
-            
-            # Avant du bateau en forme de flèche
-            points = [(x, y), (x, y + height), (x + width//10, y + height//2)]
-            pygame.draw.polygon(screen, color, points)
-            
-            # Cabine
-            if self.size >= 3:
-                pygame.draw.rect(screen, 
-                               (min(255, color[0] + 30), min(255, color[1] + 30), min(255, color[2] + 30)),
-                               (x + width//3, y + 2, width//3, height//2), 
-                               0 if not preview else 1)
+            for i in range(self.size):
+                rect = pygame.Rect(x + i * CELL_SIZE, y, CELL_SIZE, CELL_SIZE)
+                # Dessiner le rectangle plein
+                pygame.draw.rect(screen, color, rect, 0 if not preview else 0)
+                # Ajouter une bordure
+                pygame.draw.rect(screen, border_color, rect, 2)
         else:  # Vertical
-            width = CELL_SIZE
-            height = CELL_SIZE * self.size
-            
-            # Corps du bateau
-            rect = pygame.Rect(x, y, width, height)
-            pygame.draw.rect(screen, color, rect, 0 if not preview else 2)
-            
-            # Pont supérieur
-            pygame.draw.rect(screen, 
-                           (min(255, color[0] + 40), min(255, color[1] + 40), min(255, color[2] + 40)),
-                           (x + width//4, y + height//10, width//2, height - height//5), 
-                           0 if not preview else 1)
-            
-            # Avant du bateau en forme de flèche
-            points = [(x, y), (x + width, y), (x + width//2, y + height//10)]
-            pygame.draw.polygon(screen, color, points)
-            
-            # Cabine
-            if self.size >= 3:
-                pygame.draw.rect(screen, 
-                               (min(255, color[0] + 30), min(255, color[1] + 30), min(255, color[2] + 30)),
-                               (x + 2, y + height//3, width//2, height//3), 
-                               0 if not preview else 1)
-
+            for i in range(self.size):
+                rect = pygame.Rect(x, y + i * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+                # Dessiner le rectangle plein
+                pygame.draw.rect(screen, color, rect, 0 if not preview else 0)
+                # Ajouter une bordure
+                pygame.draw.rect(screen, border_color, rect, 2)

@@ -85,13 +85,14 @@ class Grid:
         x_start, y_start = position
         
         # Dessiner le fond de la grille
-        pygame.draw.rect(screen, DARK_BLUE, (x_start, y_start, CELL_SIZE * self.size, CELL_SIZE * self.size))
-        pygame.draw.rect(screen, GRID_BLUE, (x_start, y_start, CELL_SIZE * self.size, CELL_SIZE * self.size), 3)
+        grid_rect = pygame.Rect(x_start, y_start, CELL_SIZE * self.size, CELL_SIZE * self.size)
+        pygame.draw.rect(screen, DARK_BLUE, grid_rect)
+        pygame.draw.rect(screen, GRID_BLUE, grid_rect, 3)
         
         # Dessiner les lignes de la grille
         for i in range(1, self.size):
-            # Lignes horizontales avec effet d'ondulation
-            offset = 1 * math.sin(time.time() * 2 + i * 0.2)
+            # Lignes horizontales avec un léger effet d'ondulation
+            offset = math.sin(time.time() * 1.5 + i * 0.2)
             pygame.draw.line(screen, GRID_BLUE, 
                           (x_start, y_start + i * CELL_SIZE + offset),
                           (x_start + CELL_SIZE * self.size, y_start + i * CELL_SIZE + offset), 1)
@@ -108,7 +109,7 @@ class Grid:
                 cell_y = y_start + row * CELL_SIZE
                 cell_rect = pygame.Rect(cell_x, cell_y, CELL_SIZE, CELL_SIZE)
                 
-                # Dessiner les navires
+                # Dessiner les navires - Version simplifiée
                 if self.cells[row][col] == 'N' and show_ships:
                     ship_drawn = False
                     
@@ -124,64 +125,59 @@ class Grid:
                                 break
                     
                     if not ship_drawn:
-                        # Cas d'une cellule de navire qui n'est pas la première
+                        # Dessiner simplement un carré pour les cellules de navire
                         pygame.draw.rect(screen, DARK_BLUE, cell_rect)
                 
-                # Dessiner les tirs
+                # Dessiner les tirs - Style simplifié
                 if self.shots[row][col] == 'X':
-                    # Explosion pour les cases touchées
+                    # Case touchée - Fond rouge
                     pygame.draw.rect(screen, RED, cell_rect)
-                    for k in range(3):
-                        angle = k * 60 + time.time() * 50 % 360  # Animation de rotation
-                        length = CELL_SIZE * 0.4
-                        center_x, center_y = cell_x + CELL_SIZE // 2, cell_y + CELL_SIZE // 2
-                        end_x = center_x + length * math.cos(math.radians(angle))
-                        end_y = center_y + length * math.sin(math.radians(angle))
-                        pygame.draw.line(screen, YELLOW, (center_x, center_y), (end_x, end_y), 3)
                     
                     # X au centre
-                    pygame.draw.line(screen, BLACK, 
+                    pygame.draw.line(screen, WHITE, 
                                   (cell_x + 5, cell_y + 5), 
                                   (cell_x + CELL_SIZE - 5, cell_y + CELL_SIZE - 5), 2)
-                    pygame.draw.line(screen, BLACK, 
+                    pygame.draw.line(screen, WHITE, 
                                   (cell_x + CELL_SIZE - 5, cell_y + 5), 
                                   (cell_x + 5, cell_y + CELL_SIZE - 5), 2)
                 
                 elif self.shots[row][col] == 'O':
-                    # Effet d'éclaboussure pour les tirs manqués
+                    # Case manquée - Cercle bleu
                     center_x, center_y = cell_x + CELL_SIZE // 2, cell_y + CELL_SIZE // 2
-                    
-                    # Cercle d'eau
                     pygame.draw.circle(screen, WATER_BLUE, (center_x, center_y), CELL_SIZE // 3)
-                    pygame.draw.circle(screen, LIGHT_BLUE, (center_x, center_y), CELL_SIZE // 3, 1)
-                    
-                    # Éclaboussures animées
-                    for k in range(4):
-                        angle = k * 90 + time.time() * 30 % 360
-                        dist = 2 * math.sin(time.time() * 5 + k) + 5
-                        splash_x = center_x + dist * math.cos(math.radians(angle))
-                        splash_y = center_y + dist * math.sin(math.radians(angle))
-                        pygame.draw.circle(screen, LIGHT_BLUE, (splash_x, splash_y), 3)
+                    pygame.draw.circle(screen, LIGHT_BLUE, (center_x, center_y), CELL_SIZE // 3, 2)
+                
+                # Marquage pour les tirs en attente (mode réseau)
+                elif self.shots[row][col] == '?':
+                    # Afficher un point d'interrogation en attente de réponse
+                    center_x, center_y = cell_x + CELL_SIZE // 2, cell_y + CELL_SIZE // 2
+                    question_font = pygame.font.SysFont("Arial", CELL_SIZE // 2)
+                    question_text = question_font.render("?", True, YELLOW)
+                    screen.blit(question_text, 
+                              (center_x - question_text.get_width() // 2, 
+                               center_y - question_text.get_height() // 2))
         
         # Afficher les lettres (A-J) pour les colonnes
         for col in range(self.size):
             lettre = chr(65 + col)
-            offset_y = 3 * math.sin(time.time() * 2 + col * 0.3)
-            font = pygame.font.SysFont("Arial", 18)
+            # Léger effet de flottement vertical
+            offset_y = 2 * math.sin(time.time() * 1.5 + col * 0.3)
+            font = pygame.font.SysFont("Arial", int(CELL_SIZE * 0.4))  # Taille proportionnelle à la cellule
             texte = font.render(lettre, True, WHITE)
             screen.blit(texte, (x_start + col * CELL_SIZE + CELL_SIZE // 2 - texte.get_width() // 2, 
-                             y_start - 25 + offset_y))
+                             y_start - 40 + offset_y))
         
         # Afficher les chiffres (0-9) pour les lignes
         for row in range(self.size):
-            scale = 1.0 + 0.1 * math.sin(time.time() * 1.5 + row * 0.2)
-            font = pygame.font.SysFont("Arial", 18)
+            # Léger effet de pulsation pour la taille
+            scale = 1.0 + 0.05 * math.sin(time.time() * 1.5 + row * 0.2)
+            font = pygame.font.SysFont("Arial", int(CELL_SIZE * 0.4))
             texte = font.render(str(row), True, WHITE)
             texte_scaled = pygame.transform.scale(texte, 
                                           (int(texte.get_width() * scale), 
                                            int(texte.get_height() * scale)))
             screen.blit(texte_scaled, 
-                      (x_start - 25, 
+                      (x_start - 40, 
                        y_start + row * CELL_SIZE + CELL_SIZE // 2 - texte_scaled.get_height() // 2))
         
         # Afficher l'aperçu du navire en cours de placement
@@ -191,4 +187,3 @@ class Grid:
                 x_preview = x_start + preview_col * CELL_SIZE
                 y_preview = y_start + preview_row * CELL_SIZE
                 preview_ship.draw(screen, x_preview, y_preview, True, preview_valid)
-

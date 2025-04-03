@@ -4,7 +4,7 @@ import math
 import time
 from game.constants import (
     SCREEN_WIDTH, SCREEN_HEIGHT, WHITE, GRID_BLUE, DARK_BLUE, 
-    PLACEMENT_TIME, PLACEMENT_NAVIRES, JEU_SOLO, JEU_ONLINE
+    PLACEMENT_TIME, PLACEMENT_NAVIRES, JEU_SOLO, JEU_ONLINE, CELL_SIZE
 )
 from ui.ui_elements import Button, TextBox, ProgressBar
 
@@ -13,22 +13,24 @@ class ShipPlacementScreen:
         self.game_manager = game_manager
         
         # Polices
-        self.title_font = pygame.font.SysFont("Arial", 36, bold=True)
-        self.text_font = pygame.font.SysFont("Arial", 24)
-        self.small_font = pygame.font.SysFont("Arial", 18)
+        self.title_font = pygame.font.SysFont("Arial", 48, bold=True)  # Agrandi
+        self.text_font = pygame.font.SysFont("Arial", 28)  # Agrandi
+        self.small_font = pygame.font.SysFont("Arial", 22)  # Agrandi
+        
+        # Calculer les coordonnées centrées de la grille
+        grid_width = CELL_SIZE * 10  # Taille de la grille
+        self.grid_pos = (SCREEN_WIDTH // 2 - grid_width // 2, 180)  # Centrer horizontalement
         
         # Boutons
-        self.button_rotate = Button("Tourner (R)", (SCREEN_WIDTH // 2 - 200, SCREEN_HEIGHT - 150), (180, 50))
-        self.button_next = Button("→", (SCREEN_WIDTH // 2, SCREEN_HEIGHT - 150), (50, 50))
-        self.button_prev = Button("←", (SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT - 150), (50, 50))
-        self.button_random = Button("Aléatoire", (SCREEN_WIDTH // 2 + 150, SCREEN_HEIGHT - 150), (180, 50))
-        self.button_start = Button("Commencer", (SCREEN_WIDTH // 2, SCREEN_HEIGHT - 80), (200, 50))
+        btn_y = SCREEN_HEIGHT - 180  # Position verticale des boutons
+        self.button_rotate = Button("Tourner (R)", (SCREEN_WIDTH // 2 - 250, btn_y), (200, 60), 28)
+        self.button_next = Button("→", (SCREEN_WIDTH // 2 + 50, btn_y), (60, 60), 32)
+        self.button_prev = Button("←", (SCREEN_WIDTH // 2 - 50, btn_y), (60, 60), 32)
+        self.button_random = Button("Aléatoire", (SCREEN_WIDTH // 2 + 250, btn_y), (200, 60), 28)
+        self.button_start = Button("Commencer la partie", (SCREEN_WIDTH // 2, SCREEN_HEIGHT - 100), (300, 60), 28)
         
         # Barre de temps
-        self.time_bar = ProgressBar((SCREEN_WIDTH // 2, 70), (600, 20), PLACEMENT_TIME)
-        
-        # Coordonnées de la grille
-        self.grid_pos = (SCREEN_WIDTH // 2 - 200, 150)
+        self.time_bar = ProgressBar((SCREEN_WIDTH // 2, 120), (800, 25), PLACEMENT_TIME)  # Agrandi
         
         # État
         self.preview_pos = None
@@ -44,17 +46,17 @@ class ShipPlacementScreen:
         
         titre = self.title_font.render("PLACEMENT DES NAVIRES", True, WHITE)
         shadow = self.title_font.render("PLACEMENT DES NAVIRES", True, GRID_BLUE)
-        screen.blit(shadow, (SCREEN_WIDTH // 2 - titre.get_width() // 2 + 2, 32 + offset_y))
-        screen.blit(titre, (SCREEN_WIDTH // 2 - titre.get_width() // 2, 30 + offset_y))
+        screen.blit(shadow, (SCREEN_WIDTH // 2 - titre.get_width() // 2 + 2, 52 + offset_y))
+        screen.blit(titre, (SCREEN_WIDTH // 2 - titre.get_width() // 2, 50 + offset_y))
         
         # Barre de temps restant
         self.time_bar.update(self.game_manager.get_remaining_placement_time())
-        self.time_bar.draw(screen, True)
+        self.time_bar.draw(screen, self.game_manager.get_remaining_placement_time() < PLACEMENT_TIME * 0.3)
         
         # Temps restant en texte
         remaining_seconds = self.game_manager.get_remaining_placement_time() // 1000
         time_text = self.text_font.render(f"{remaining_seconds} secondes restantes", True, WHITE)
-        screen.blit(time_text, (SCREEN_WIDTH // 2 - time_text.get_width() // 2, 90))
+        screen.blit(time_text, (SCREEN_WIDTH // 2 - time_text.get_width() // 2, 150))
         
         # Afficher la grille du joueur
         self.game_manager.player.grid.draw(
@@ -70,31 +72,95 @@ class ShipPlacementScreen:
         current_ship = self.game_manager.player.get_current_ship()
         
         if current_ship:
-            # Fond semi-transparent pour le texte
-            info_surf = pygame.Surface((500, 35), pygame.SRCALPHA)
-            info_surf.fill((0, 50, 100, 150))
-            screen.blit(info_surf, (SCREEN_WIDTH // 2 - 250, 110))
+            # Créer un panneau d'information pour les navires à placer
+            info_panel = pygame.Surface((400, SCREEN_HEIGHT - 400), pygame.SRCALPHA)
+            info_panel.fill((0, 30, 60, 180))
+            pygame.draw.rect(info_panel, GRID_BLUE, (0, 0, 400, SCREEN_HEIGHT - 400), 2, 15)
             
-            info = self.text_font.render(f"Placez le {current_ship.name} (taille: {current_ship.size})", True, WHITE)
-            screen.blit(info, (SCREEN_WIDTH // 2 - info.get_width() // 2, 115))
+            # Positionner le panneau à droite de la grille
+            panel_x = self.grid_pos[0] + 10 * CELL_SIZE + 50
+            panel_y = 180
+            screen.blit(info_panel, (panel_x, panel_y))
             
-            # Panneau d'instruction avec effet de brillance
-            instruction_surf = pygame.Surface((600, 80), pygame.SRCALPHA)
-            instruction_surf.fill((0, 30, 60, 180))
-            pygame.draw.rect(instruction_surf, GRID_BLUE, (0, 0, 600, 80), 2, 10)
-            screen.blit(instruction_surf, (SCREEN_WIDTH // 2 - 300, SCREEN_HEIGHT - 200))
+            # Titre du panneau
+            panel_title = self.text_font.render("NAVIRES À PLACER", True, WHITE)
+            screen.blit(panel_title, (panel_x + 200 - panel_title.get_width() // 2, panel_y + 20))
+            
+            # Liste des navires à placer avec leur statut
+            ships_y = panel_y + 70
+            for i, ship in enumerate(self.game_manager.player.ships_to_place):
+                # Déterminer si le navire est placé, en cours ou en attente
+                if i < self.game_manager.player.current_ship_index:
+                    status = "✓"  # Placé
+                    color = (50, 255, 100)
+                elif i == self.game_manager.player.current_ship_index:
+                    status = "▶"  # En cours
+                    color = (255, 255, 0)
+                else:
+                    status = "◯"  # En attente
+                    color = WHITE
+                
+                # Texte du navire
+                ship_name = f"{status} {ship.name} ({ship.size} cases)"
+                ship_text = self.small_font.render(ship_name, True, color)
+                
+                # Effet de highlight pour le navire actuel
+                if i == self.game_manager.player.current_ship_index:
+                    highlight = pygame.Surface((380, 30), pygame.SRCALPHA)
+                    highlight.fill((255, 255, 0, 30))
+                    screen.blit(highlight, (panel_x + 10, ships_y + i * 40 - 5))
+                
+                screen.blit(ship_text, (panel_x + 20, ships_y + i * 40))
+            
+            # Informations sur le navire actuel
+            ship_info_y = ships_y + len(self.game_manager.player.ships_to_place) * 40 + 30
+            info_title = self.text_font.render("NAVIRE ACTUEL", True, WHITE)
+            screen.blit(info_title, (panel_x + 200 - info_title.get_width() // 2, ship_info_y))
+            
+            # Nom et taille du navire
+            ship_info_y += 40
+            ship_name = self.text_font.render(current_ship.name, True, (255, 255, 0))
+            screen.blit(ship_name, (panel_x + 200 - ship_name.get_width() // 2, ship_info_y))
+            
+            ship_info_y += 40
+            ship_size = self.small_font.render(f"Taille: {current_ship.size} cases", True, WHITE)
+            screen.blit(ship_size, (panel_x + 200 - ship_size.get_width() // 2, ship_info_y))
+            
+            # Orientation actuelle
+            ship_info_y += 30
+            orientation_text = "Horizontale" if current_ship.orientation == 'H' else "Verticale"
+            orientation = self.small_font.render(f"Orientation: {orientation_text}", True, WHITE)
+            screen.blit(orientation, (panel_x + 200 - orientation.get_width() // 2, ship_info_y))
             
             # Instructions
+            ship_info_y += 60
+            instructions_title = self.text_font.render("INSTRUCTIONS", True, WHITE)
+            screen.blit(instructions_title, (panel_x + 200 - instructions_title.get_width() // 2, ship_info_y))
+            
+            instructions = [
+                "1. Sélectionnez un navire dans la liste",
+                "2. Changez son orientation avec 'R'",
+                "3. Cliquez sur la grille pour le placer",
+                "4. Placez tous les navires avant la fin",
+                "   du temps ou appuyez sur 'Commencer'"
+            ]
+            
+            for i, instruction in enumerate(instructions):
+                instr_text = self.small_font.render(instruction, True, WHITE)
+                screen.blit(instr_text, (panel_x + 20, ship_info_y + 40 + i * 30))
+            
+            # Panneau d'instruction en bas
+            instruction_surf = pygame.Surface((800, 60), pygame.SRCALPHA)
+            instruction_surf.fill((0, 30, 60, 180))
+            pygame.draw.rect(instruction_surf, GRID_BLUE, (0, 0, 800, 60), 2, 10)
+            screen.blit(instruction_surf, (SCREEN_WIDTH // 2 - 400, SCREEN_HEIGHT - 240))
+            
+            # Instructions pour les contrôles
             instruction1 = self.small_font.render("Appuyez sur 'R' ou sur le bouton 'Tourner' pour changer l'orientation", True, WHITE)
             instruction2 = self.small_font.render("Utilisez les flèches pour choisir le navire à placer", True, WHITE)
             
-            screen.blit(instruction1, (SCREEN_WIDTH // 2 - instruction1.get_width() // 2, SCREEN_HEIGHT - 190))
-            screen.blit(instruction2, (SCREEN_WIDTH // 2 - instruction2.get_width() // 2, SCREEN_HEIGHT - 170))
-            
-            # Afficher l'orientation actuelle
-            orientation_text = "Horizontale" if current_ship.orientation == 'H' else "Verticale"
-            orientation = self.small_font.render(f"Orientation: {orientation_text}", True, WHITE)
-            screen.blit(orientation, (SCREEN_WIDTH // 2 - orientation.get_width() // 2, SCREEN_HEIGHT - 220))
+            screen.blit(instruction1, (SCREEN_WIDTH // 2 - instruction1.get_width() // 2, SCREEN_HEIGHT - 230))
+            screen.blit(instruction2, (SCREEN_WIDTH // 2 - instruction2.get_width() // 2, SCREEN_HEIGHT - 205))
             
             # Boutons
             self.button_rotate.draw(screen)
@@ -103,8 +169,13 @@ class ShipPlacementScreen:
             self.button_random.draw(screen)
         else:
             # Tous les navires sont placés
+            ready_panel = pygame.Surface((600, 100), pygame.SRCALPHA)
+            ready_panel.fill((0, 50, 0, 180))
+            pygame.draw.rect(ready_panel, (50, 255, 100), (0, 0, 600, 100), 2, 15)
+            screen.blit(ready_panel, (SCREEN_WIDTH // 2 - 300, SCREEN_HEIGHT - 230))
+            
             ready_text = self.text_font.render("Tous les navires sont placés, prêt à commencer !", True, (50, 255, 50))
-            screen.blit(ready_text, (SCREEN_WIDTH // 2 - ready_text.get_width() // 2, SCREEN_HEIGHT - 180))
+            screen.blit(ready_text, (SCREEN_WIDTH // 2 - ready_text.get_width() // 2, SCREEN_HEIGHT - 190))
             
             # Bouton pour commencer la partie
             self.button_start.draw(screen, time.time())
@@ -131,14 +202,13 @@ class ShipPlacementScreen:
                 grid_x, grid_y = self.grid_pos
                 
                 # Vérifier si le clic est dans la grille
-                cell_size = 40  # Même valeur que dans constants.py
-                grid_width = grid_height = 10 * cell_size
+                grid_width = grid_height = 10 * CELL_SIZE
                 
                 if (grid_x <= mouse_pos[0] < grid_x + grid_width and 
                     grid_y <= mouse_pos[1] < grid_y + grid_height):
                     # Convertir les coordonnées en indices de grille
-                    col = (mouse_pos[0] - grid_x) // cell_size
-                    row = (mouse_pos[1] - grid_y) // cell_size
+                    col = (mouse_pos[0] - grid_x) // CELL_SIZE
+                    row = (mouse_pos[1] - grid_y) // CELL_SIZE
                     
                     # Placer le navire s'il est dans une position valide
                     if self.placement_valid:
@@ -185,14 +255,13 @@ class ShipPlacementScreen:
         grid_x, grid_y = self.grid_pos
         
         # Vérifier si la souris est sur la grille
-        cell_size = 40  # Même valeur que dans constants.py
-        grid_width = grid_height = 10 * cell_size
+        grid_width = grid_height = 10 * CELL_SIZE
         
         if (grid_x <= mouse_pos[0] < grid_x + grid_width and 
             grid_y <= mouse_pos[1] < grid_y + grid_height):
             # Convertir les coordonnées en indices de grille
-            col = (mouse_pos[0] - grid_x) // cell_size
-            row = (mouse_pos[1] - grid_y) // cell_size
+            col = (mouse_pos[0] - grid_x) // CELL_SIZE
+            row = (mouse_pos[1] - grid_y) // CELL_SIZE
             
             # Mettre à jour la position de l'aperçu
             self.preview_pos = (row, col)
@@ -228,4 +297,3 @@ class ShipPlacementScreen:
             if self.game_manager.player.grid.can_place_ship(current_ship.size, row, col, orientation):
                 self.game_manager.player.place_current_ship(row, col, orientation)
                 break
-

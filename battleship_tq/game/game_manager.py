@@ -3,6 +3,7 @@ import random
 import time
 import pygame
 import logging
+import json
 from game.constants import (
     PLACEMENT_TIME, TURN_TIME, MESSAGE_DURATION, 
     FACILE, MOYEN, DIFFICILE, NAVIRES
@@ -12,7 +13,7 @@ from game.ai_player import AIPlayer
 from game.ship import Ship
 
 # Configuration des logs
-logging.basicConfig(level=logging.DEBUG, 
+logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 class GameManager:
@@ -20,7 +21,7 @@ class GameManager:
         self.player = Player("Joueur")
         self.opponent = None
         self.is_online = False
-        self.network_client = None  # Ajout de la référence au client réseau
+        self.network_client = None  # Référence au client réseau
         self.current_player = None  # "player" ou "opponent"
         self.game_state = "waiting"  # "waiting", "placement", "playing", "game_over"
         self.message = ""
@@ -30,11 +31,15 @@ class GameManager:
         self.turn_start_time = 0
         self.winner = None
         self.difficulty = MOYEN
+        self.last_network_message = None
     
     def start_solo_game(self, difficulty=MOYEN):
         """Démarre une partie solo contre un bot"""
         logging.info(f"Démarrage d'une partie solo - Difficulté : {difficulty}")
+        # Réinitialiser le mode de jeu
         self.is_online = False
+        self.network_client = None  # Important: libérer la référence au client réseau
+        
         self.difficulty = difficulty
         self.opponent = AIPlayer(difficulty)
         self.player.reset()
@@ -64,14 +69,136 @@ class GameManager:
         self.message = ""
         self.winner = None
         
-        # Référence au client réseau
-        # Détermine qui commence en fonction du rôle de l'hôte
-        if self.network_client and self.network_client.is_host:
-            self.current_player = "player"
-            logging.info("Hôte - Le joueur commence")
-        else:
-            self.current_player = "opponent"
-            logging.info("Client - L'adversaire commence")
+        # Configurer le client réseau
+        if self.network_client:
+            # Définir le callback pour les messages réseau
+            self.network_client.set_message_callback(self._handle_network_message)
+            
+            # Déterminer qui commence en fonction du rôle de l'hôte
+            if self.network_client.is_host:
+                self.current_player = "player"
+                logging.info("Hôte - Le joueur commence")
+            else:
+                self.current_player = "opponent"
+                logging.info("Client - L'adversaire commence")
+    
+    def cleanup_network(self):
+        """Nettoie les ressources réseau"""
+        logging.info("Nettoyage des ressources réseau")
+        if self.network_client:
+            try:
+                self.network_client.disconnect()
+                logging.info("Client réseau déconnecté")
+            except Exception as e:
+                logging.error(f"Erreur lors de la déconnexion réseau: {e}")
+            self.network_client = None
+    
+    def _handle_network_message(self, message):
+        """Gère les messages réseau reçus"""
+        logging.info(f"Message réseau reçu: {message}")
+        self.last_network_message = message
+        
+        # Traiter différents types de messages
+        if message.get('type') == 'shot':
+            row, col = message.get('row'), message.get('col')
+            logging.info(f"Tir reçu de l'adversaire: ({row}, {col})")
+            
+            # Appliquer le tir sur notre grille
+            result = self.player.grid.receive_shot(row, col)
+            
+            # Envoyer le résultat du tir
+            self._send_shot_result(result, row, col)
+            
+            # Afficher le message approprié
+            if result == "hit":
+                self.show_message("TOUCHÉ!", (255, 165, 0))
+            elif result == "miss":
+                self.show_message("MANQUÉ!", (135, 206, 250))
+            elif result == "sunk":
+                self.show_message("COULÉ!", (255, 50, 50))
+            
+            # Vérifier si le jeu est terminé
+            if self.player.grid.are_all_ships_sunk():
+                logging.info("Partie terminée - Adversaire gagnant")
+                self.game_state = "game_over"
+                self.winner = "opponent"
+                
+                # Informer l'adversaire de la victoire
+                self._send_game_over("opponent")
+            else:
+                # Passer le tour au joueur
+                self.current_player = "player"
+                self.turn_start_time = pygame.time.get_ticks()
+        
+        elif message.get('type') == 'shot_result':
+            result = message.get('result')
+            row, col = message.get('row'), message.get('col')
+            logging.info(f"Résultat du tir: {result} à ({row}, {col})")
+            
+            # Mettre à jour notre grille de tirs
+            if result == "hit":
+                self.opponent.grid.shots[row][col] = 'X'
+                self.show_message("TOUCHÉ!", (255, 165, 0))
+            elif result == "miss":
+                self.opponent.grid.shots[row][col] = 'O'
+                self.show_message("MANQUÉ!", (135, 206, 250))
+            elif result == "sunk":
+                self.opponent.grid.shots[row][col] = 'X'
+                self.show_message("COULÉ!", (255, 50, 50))
+            
+            # Passer le tour à l'adversaire si le jeu n'est pas terminé
+            if self.game_state != "game_over":
+                self.current_player = "opponent"
+                self.turn_start_time = pygame.time.get_ticks()
+        
+        elif message.get('type') == 'game_over':
+            winner = message.get('winner')
+            logging.info(f"Message de fin de partie reçu: {winner}")
+            
+            self.game_state = "game_over"
+            self.winner = winner
+    
+    def _send_shot(self, row, col):
+        """Envoie un message de tir à l'adversaire"""
+        if not self.is_online or not self.network_client:
+            return
+        
+        message = {
+            'type': 'shot',
+            'row': row,
+            'col': col
+        }
+        
+        self.network_client.send_message(message)
+        logging.info(f"Message de tir envoyé: ({row}, {col})")
+    
+    def _send_shot_result(self, result, row, col):
+        """Envoie le résultat d'un tir à l'adversaire"""
+        if not self.is_online or not self.network_client:
+            return
+        
+        message = {
+            'type': 'shot_result',
+            'result': result,
+            'row': row,
+            'col': col
+        }
+        
+        self.network_client.send_message(message)
+        logging.info(f"Résultat de tir envoyé: {result} à ({row}, {col})")
+    
+    def _send_game_over(self, winner):
+        """Envoie un message de fin de partie à l'adversaire"""
+        if not self.is_online or not self.network_client:
+            return
+        
+        message = {
+            'type': 'game_over',
+            'winner': winner
+        }
+        
+        self.network_client.send_message(message)
+        logging.info(f"Message de fin de partie envoyé, gagnant: {winner}")
     
     def start_game(self):
         """Démarre la partie après le placement des navires"""
@@ -139,6 +266,24 @@ class GameManager:
             logging.warning("Tir invalide - Message actif")
             return False, "message_active"
         
+        # Mode en ligne
+        if self.is_online:
+            # Vérifier si la case a déjà été tirée
+            if self.opponent.grid.shots[row][col] != ' ':
+                return False, "already_shot"
+            
+            # Envoyer le tir à l'adversaire
+            self._send_shot(row, col)
+            
+            # Marquage temporaire en attendant le résultat
+            self.opponent.grid.shots[row][col] = '?'
+            
+            # Passons le tour à l'adversaire
+            self.current_player = "opponent"
+            
+            return True, "wait_response"
+        
+        # Mode solo
         result = self.player.make_shot(self.opponent.grid, row, col)
         
         if result == "already_shot" or result == "invalid":
@@ -206,7 +351,6 @@ class GameManager:
         
         return True, result
     
-    # Les autres méthodes restent identiques aux versions précédentes
     def check_turn_timeout(self):
         """Vérifie si le temps du tour actuel est écoulé"""
         if self.game_state != "playing":
@@ -229,7 +373,13 @@ class GameManager:
                     self.process_player_shot(row, col)
             else:
                 # L'IA joue automatiquement
-                self.process_ai_turn()
+                if isinstance(self.opponent, AIPlayer):
+                    self.process_ai_turn()
+                elif self.is_online:
+                    # En mode réseau, on passe simplement au tour du joueur après timeout
+                    self.current_player = "player"
+                    self.turn_start_time = pygame.time.get_ticks()
+                    self.show_message("Tour passé - Temps écoulé", (255, 100, 100))
             
             return True
         
