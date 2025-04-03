@@ -4,6 +4,7 @@ import json
 import time
 import logging
 import random
+import requests  # Pour obtenir l'IP publique
 
 # Configuration du serveur
 HOST = '0.0.0.0'  # Accepte les connexions de toutes les interfaces
@@ -39,7 +40,38 @@ class Server:
         self.server_socket = None
         self.running = False
         self.local_ip = None
+        self.public_ip = None
     
+    def get_public_ip(self):
+        """
+        Récupérer l'adresse IP publique du serveur
+        
+        Returns:
+            str ou None: Adresse IP publique ou None en cas d'échec
+        """
+        try:
+            # Essayer différents services pour récupérer l'IP publique
+            services = [
+                "https://api.ipify.org?format=json",
+                "https://ifconfig.me/ip"
+            ]
+            
+            for service in services:
+                try:
+                    response = requests.get(service, timeout=5)
+                    if response.status_code == 200:
+                        if "json" in service:
+                            return response.json()["ip"]
+                        else:
+                            return response.text.strip()
+                except:
+                    continue
+                    
+            logger.warning("Impossible de récupérer l'IP publique")
+            return None
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération de l'IP publique: {e}")
+            return None
     
     def start(self):
         """
@@ -74,6 +106,11 @@ class Server:
             except:
                 self.local_ip = socket.gethostbyname(socket.gethostname())
             
+            # Obtenir l'adresse IP publique dans un thread séparé pour ne pas bloquer
+            public_ip_thread = threading.Thread(target=self._get_public_ip_thread)
+            public_ip_thread.daemon = True
+            public_ip_thread.start()
+            
             logger.info(f"Serveur démarré sur {self.host}:{self.port}")
             logger.info(f"Adresse IP locale : {self.local_ip}:{self.port}")
             
@@ -89,6 +126,12 @@ class Server:
             if self.server_socket:
                 self.server_socket.close()
             return False
+    
+    def _get_public_ip_thread(self):
+        """Thread pour récupérer l'IP publique en arrière-plan"""
+        self.public_ip = self.get_public_ip()
+        if self.public_ip:
+            logger.info(f"Adresse IP publique : {self.public_ip}:{self.port}")
     
     def stop(self):
         """
@@ -155,6 +198,9 @@ class Server:
         global id_counter
         
         try:
+            # Configurer le socket avec un timeout plus élevé pour assurer la stabilité
+            client_socket.settimeout(60.0)  # 60 secondes de timeout
+            
             # Attendre le message de login
             message = self._receive_message(client_socket)
             if not message or message.get('type') != 'login':
@@ -173,10 +219,12 @@ class Server:
                     'id': client_id,
                     'username': username,
                     'grid': self._create_empty_grid(),
-                    'status': 'waiting_placement'
+                    'status': 'waiting_placement',
+                    'address': addr,
+                    'last_activity': time.time()
                 }
             
-            logger.info(f"Joueur {username} (ID: {client_id}) enregistré")
+            logger.info(f"Joueur {username} (ID: {client_id}) enregistré depuis {addr}")
             
             # Envoyer une confirmation de login
             self._send_message(client_socket, {
@@ -190,6 +238,11 @@ class Server:
                 message = self._receive_message(client_socket)
                 if not message:
                     break
+                
+                # Mettre à jour l'horodatage de dernière activité
+                with lock:
+                    if client_socket in clients:
+                        clients[client_socket]['last_activity'] = time.time()
                 
                 # Traiter le message selon son type
                 with lock:
@@ -295,7 +348,16 @@ class Server:
                             'type': 'place_ships_request',
                             'message': "Nouvelle partie! Placez vos bateaux."
                         })
+                    
+                    elif message_type == 'ping':
+                        # Répondre aux pings pour la vérification de la connexion
+                        self._send_message(client_socket, {
+                            'type': 'pong',
+                            'timestamp': time.time()
+                        })
         
+        except socket.timeout:
+            logger.warning(f"Timeout pour le client {addr}")
         except Exception as e:
             logger.error(f"Erreur dans la gestion du client {addr}: {e}")
         
@@ -326,7 +388,7 @@ class Server:
                     
                     opponent_info.pop('opponent', None)
                 
-                logger.info(f"Client {client_info['username']} (ID: {client_info['id']}) déconnecté.")
+                logger.info(f"Client {client_info['username']} (ID: {client_info['id']}) déconnecté depuis {client_info['address']}.")
                 del clients[client_socket]
         
         try:
@@ -543,16 +605,56 @@ class Server:
                 return False
         return True
 
+    def _check_inactive_clients(self):
+        """
+        Vérifier et déconnecter les clients inactifs
+        """
+        current_time = time.time()
+        inactive_timeout = 300  # 5 minutes
+        
+        with lock:
+            inactive_clients = []
+            
+            for client_socket, client_info in clients.items():
+                if current_time - client_info['last_activity'] > inactive_timeout:
+                    inactive_clients.append(client_socket)
+            
+            # Déconnecter les clients inactifs
+            for client_socket in inactive_clients:
+                logger.info(f"Déconnexion du client inactif: {clients[client_socket]['username']}")
+                self._disconnect_client(client_socket)
+
 
 # Point d'entrée pour démarrer le serveur directement
 if __name__ == "__main__":
     server = Server()
     try:
         if server.start():
-            print("Serveur démarré avec succès. Appuyez sur Ctrl+C pour quitter.")
+            print(f"Serveur démarré avec succès sur le port {PORT}.")
+            print(f"Adresse IP locale: {server.local_ip}:{PORT}")
+            print("En attente de récupération de l'IP publique...")
+            print("Appuyez sur Ctrl+C pour quitter.")
+            
+            # Attendre que l'IP publique soit récupérée
+            max_wait = 10  # 10 secondes maximum
+            wait_time = 0
+            while server.public_ip is None and wait_time < max_wait:
+                time.sleep(1)
+                wait_time += 1
+            
+            if server.public_ip:
+                print(f"Adresse IP publique: {server.public_ip}:{PORT}")
+                print("Pour permettre les connexions depuis l'extérieur:")
+                print("1. Assurez-vous que le port 65432 est ouvert sur votre routeur")
+                print("2. Partagez votre IP publique avec l'autre joueur")
+            else:
+                print("Impossible de récupérer l'IP publique. Les joueurs externes auront besoin de votre IP publique manuelle.")
+            
             # Garder le thread principal en vie
             while True:
-                time.sleep(1)
+                time.sleep(60)
+                # Vérifier et déconnecter les clients inactifs toutes les minutes
+                server._check_inactive_clients()
         else:
             print("Erreur lors du démarrage du serveur.")
     except KeyboardInterrupt:

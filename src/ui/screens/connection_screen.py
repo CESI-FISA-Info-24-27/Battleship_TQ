@@ -29,11 +29,11 @@ class ConnectionScreen:
         
         # Titre
         self.title_text = self.title_font.render("Rejoindre une partie", True, WHITE)
-        self.title_rect = self.title_text.get_rect(center=(SCREEN_WIDTH // 2, 100))
+        self.title_rect = self.title_text.get_rect(center=(SCREEN_WIDTH // 2, 80))
         
         # Panneau principal
-        panel_width = 500
-        panel_height = 300
+        panel_width = 550
+        panel_height = 350
         panel_x = (SCREEN_WIDTH - panel_width) // 2
         panel_y = (SCREEN_HEIGHT - panel_height) // 2
         
@@ -71,7 +71,7 @@ class ConnectionScreen:
         
         self.connect_button = Button(
             panel_x + (panel_width - button_width) // 2,
-            panel_y + 200,
+            panel_y + 190,
             button_width,
             button_height,
             "Se connecter",
@@ -80,6 +80,24 @@ class ConnectionScreen:
             border_radius=10,
             bg_color=GREEN
         )
+        
+        # Historique des connexions (ajout d'une nouvelle fonctionnalité)
+        self.show_history = False
+        self.history_button = Button(
+            panel_x + (panel_width - button_width) // 2,
+            panel_y + 190 + button_height + button_margin,
+            button_width,
+            button_height,
+            "Historique",
+            self._toggle_history,
+            font_size=24,
+            border_radius=10,
+            bg_color=BLUE
+        )
+        
+        # Liste des adresses récentes (simulé pour l'exemple, à remplacer par un stockage persistant)
+        self.recent_addresses = []
+        self._load_recent_addresses()
         
         # Bouton de retour
         self.back_button = BackButton(30, 30, 30, self._back_to_menu)
@@ -92,6 +110,17 @@ class ConnectionScreen:
         self.connecting = False
         self.connection_dots = 0
         self.connection_timer = 0
+        
+        # Histoire de connexion (liste déroulante)
+        history_height = 150
+        self.history_list_rect = pygame.Rect(
+            panel_x + 50,
+            panel_y + 250,
+            panel_width - 100,
+            history_height
+        )
+        self.history_scroll = 0
+        self.max_visible_history = 5  # Nombre maximum d'éléments visibles à la fois
         
         # Image de fond
         self.background = None
@@ -106,8 +135,60 @@ class ConnectionScreen:
         # Rassembler les boutons pour faciliter la gestion
         self.buttons = [
             self.connect_button,
+            self.history_button,
             self.back_button
         ]
+        
+    def _load_recent_addresses(self):
+        """Charger les adresses récentes depuis un fichier"""
+        try:
+            # Essayer de charger depuis un fichier
+            history_path = os.path.join("assets", "recent_servers.txt")
+            if os.path.exists(history_path):
+                with open(history_path, "r") as f:
+                    self.recent_addresses = [line.strip() for line in f.readlines() if line.strip()]
+            
+            # Si pas d'historique ou fichier inexistant, ajouter des exemples
+            if not self.recent_addresses:
+                self.recent_addresses = ["localhost:65432", "127.0.0.1:65432"]
+        except Exception as e:
+            print(f"Erreur lors du chargement de l'historique: {e}")
+            self.recent_addresses = ["localhost:65432", "127.0.0.1:65432"]
+            
+    def _save_recent_addresses(self):
+        """Sauvegarder les adresses récentes dans un fichier"""
+        try:
+            # Créer le dossier assets s'il n'existe pas
+            if not os.path.exists("assets"):
+                os.makedirs("assets")
+                
+            # Sauvegarder dans un fichier
+            history_path = os.path.join("assets", "recent_servers.txt")
+            with open(history_path, "w") as f:
+                for addr in self.recent_addresses:
+                    f.write(f"{addr}\n")
+        except Exception as e:
+            print(f"Erreur lors de la sauvegarde de l'historique: {e}")
+            
+    def _add_to_history(self, address):
+        """Ajouter une adresse à l'historique"""
+        # Supprimer l'adresse si elle existe déjà
+        if address in self.recent_addresses:
+            self.recent_addresses.remove(address)
+            
+        # Ajouter l'adresse au début de la liste
+        self.recent_addresses.insert(0, address)
+        
+        # Limiter la taille de l'historique
+        if len(self.recent_addresses) > 10:
+            self.recent_addresses = self.recent_addresses[:10]
+            
+        # Sauvegarder l'historique
+        self._save_recent_addresses()
+        
+    def _toggle_history(self):
+        """Afficher/masquer l'historique des connexions"""
+        self.show_history = not self.show_history
         
     def handle_event(self, event):
         """Gérer les événements d'entrée"""
@@ -120,6 +201,31 @@ class ConnectionScreen:
         if event.type == pygame.MOUSEBUTTONDOWN:
             # Activer/désactiver le champ de saisie lors du clic
             self.input_active = self.input_rect.collidepoint(event.pos)
+            
+            # Gérer les clics sur les éléments de l'historique
+            if self.show_history:
+                for i, addr in enumerate(self.recent_addresses):
+                    if i >= self.max_visible_history:
+                        break
+                        
+                    y_pos = self.history_list_rect.y + i * 30 - self.history_scroll
+                    item_rect = pygame.Rect(
+                        self.history_list_rect.x,
+                        y_pos,
+                        self.history_list_rect.width,
+                        25
+                    )
+                    
+                    if item_rect.collidepoint(event.pos):
+                        self.input_text = addr
+                        break
+                        
+            # Gérer le défilement de l'historique
+            if event.button == 4:  # Molette vers le haut
+                self.history_scroll = max(0, self.history_scroll - 30)
+            elif event.button == 5:  # Molette vers le bas
+                max_scroll = max(0, len(self.recent_addresses) * 30 - self.history_list_rect.height)
+                self.history_scroll = min(max_scroll, self.history_scroll + 30)
             
         if event.type == pygame.KEYDOWN and self.input_active and not self.connecting:
             if event.key == pygame.K_RETURN:
@@ -180,7 +286,7 @@ class ConnectionScreen:
         
         # Instructions supplémentaires
         instructions_extra = self.info_font.render(
-            "Exemple: 192.168.1.10:65432", True, LIGHT_BLUE
+            "Format: adresse:65432 (exemple: 192.168.1.10:65432)", True, LIGHT_BLUE
         )
         instructions_extra_rect = instructions_extra.get_rect(
             center=(SCREEN_WIDTH // 2, self.instructions_rect.bottom + 20)
@@ -221,6 +327,10 @@ class ConnectionScreen:
             for button in self.buttons:
                 button.draw(screen)
                 
+        # Afficher l'historique si demandé
+        if self.show_history and not self.connecting:
+            self._draw_history(screen)
+                
     def _draw_background_pattern(self, screen):
         """Dessiner un motif de fond"""
         # Dessiner des vagues et des points pour simuler l'eau
@@ -236,6 +346,84 @@ class ConnectionScreen:
                     color, 
                     (x + math.sin(y / 50) * 5, y),  # Utiliser math.sin
                     2
+                )
+                
+    def _draw_history(self, screen):
+        """Dessiner la liste de l'historique des connexions"""
+        # Fond de l'historique
+        history_bg = pygame.Rect(
+            self.history_list_rect.x - 10,
+            self.history_list_rect.y - 10,
+            self.history_list_rect.width + 20,
+            self.history_list_rect.height + 20
+        )
+        pygame.draw.rect(screen, (0, 0, 0, 180), history_bg, border_radius=10)
+        pygame.draw.rect(screen, LIGHT_BLUE, history_bg, 2, border_radius=10)
+        
+        # Titre de l'historique
+        history_title = self.info_font.render("Connexions récentes", True, LIGHT_BLUE)
+        history_title_rect = history_title.get_rect(
+            center=(self.history_list_rect.centerx, self.history_list_rect.y - 20)
+        )
+        screen.blit(history_title, history_title_rect)
+        
+        # Zone de clip pour limiter l'affichage à la taille de la liste
+        original_clip = screen.get_clip()
+        screen.set_clip(self.history_list_rect)
+        
+        # Éléments de l'historique
+        for i, addr in enumerate(self.recent_addresses):
+            y_pos = self.history_list_rect.y + i * 30 - self.history_scroll
+            
+            # Ne dessiner que les éléments visibles
+            if (y_pos + 25 >= self.history_list_rect.y and 
+                y_pos <= self.history_list_rect.y + self.history_list_rect.height):
+                
+                # Fond de l'élément (alternance de couleurs)
+                bg_color = (10, 40, 80) if i % 2 == 0 else (5, 30, 60)
+                item_rect = pygame.Rect(
+                    self.history_list_rect.x + 5,
+                    y_pos,
+                    self.history_list_rect.width - 10,
+                    25
+                )
+                pygame.draw.rect(screen, bg_color, item_rect, border_radius=5)
+                
+                # Texte de l'élément
+                addr_text = self.info_font.render(addr, True, WHITE)
+                addr_rect = addr_text.get_rect(
+                    midleft=(self.history_list_rect.x + 15, y_pos + 12)
+                )
+                screen.blit(addr_text, addr_rect)
+        
+        # Restaurer le clip original
+        screen.set_clip(original_clip)
+        
+        # Dessiner des indicateurs de défilement si nécessaire
+        max_scroll = max(0, len(self.recent_addresses) * 30 - self.history_list_rect.height)
+        if max_scroll > 0:
+            # Indicateur vers le haut
+            if self.history_scroll > 0:
+                pygame.draw.polygon(
+                    screen,
+                    LIGHT_BLUE,
+                    [
+                        (self.history_list_rect.right + 20, self.history_list_rect.y + 10),
+                        (self.history_list_rect.right + 30, self.history_list_rect.y),
+                        (self.history_list_rect.right + 40, self.history_list_rect.y + 10)
+                    ]
+                )
+            
+            # Indicateur vers le bas
+            if self.history_scroll < max_scroll:
+                pygame.draw.polygon(
+                    screen,
+                    LIGHT_BLUE,
+                    [
+                        (self.history_list_rect.right + 20, self.history_list_rect.bottom - 10),
+                        (self.history_list_rect.right + 30, self.history_list_rect.bottom),
+                        (self.history_list_rect.right + 40, self.history_list_rect.bottom - 10)
+                    ]
                 )
             
     def _connect_to_server(self):
@@ -284,6 +472,9 @@ class ConnectionScreen:
             success = self.game.client.connect()
             
             if success:
+                # Ajouter l'adresse à l'historique des connexions
+                self._add_to_history(self.input_text)
+                
                 # Configuration supplémentaire en cas de connexion réussie
                 def on_game_state_update(game_state):
                     print("Game state update received")

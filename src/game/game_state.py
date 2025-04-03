@@ -90,35 +90,41 @@ class GameState:
                 
         return True
     
+    
     def bot_play(self):
-        """
-        Faire jouer le bot (en mode solo)
-        
-        Returns:
-            (x, y, hit, ship_id, sunk): Résultat du tir du bot
-        """
-        # Vérifier si c'est le tour du bot (joueur 1)
-        if self.current_player_index != 1:
-            return None
+            """
+            Faire jouer le bot (en mode solo)
             
-        player = self.get_opponent_player()  # Joueur humain
-        
-        # Initialiser l'IA si ce n'est pas déjà fait
-        if not self.ai:
-            from src. game.BattleshipAI import BattleshipAI
-            self.ai = BattleshipAI(self.difficulty)
-        
-        # Choisir une cible en fonction de la difficulté
-        x, y = self.ai.choose_target(player.board)
-        
-        if x is None or y is None:
-            return None
-        
-        # Tirer sur la cible
-        shot_result = self.process_shot(1, x, y)
-        
-        # Retourner le résultat
-        return shot_result
+            Returns:
+                (x, y, hit, ship_id, sunk): Résultat du tir du bot
+            """
+            # Vérifier si c'est le tour du bot (joueur 1)
+            if self.current_player_index != 1:
+                return None
+                
+            player = self.get_opponent_player()  # Joueur humain
+            
+            # Initialiser l'IA si ce n'est pas déjà fait
+            # S'assurer d'utiliser la difficulté définie
+            if not self.ai:
+                from src.game.BattleshipAI import BattleshipAI
+                
+                # Utiliser explicitement la difficulté
+                bot_difficulty = getattr(self, 'difficulty', 'expert')
+                print(f"Bot difficulty: {bot_difficulty}")
+                self.ai = BattleshipAI(bot_difficulty)
+            
+            # Choisir une cible en fonction de la difficulté
+            x, y = self.ai.choose_target(player.board)
+            
+            if x is None or y is None:
+                return None
+            
+            # Tirer sur la cible
+            shot_result = self.process_shot(1, x, y)
+            
+            # Retourner le résultat
+            return shot_result   
         
     def reset(self):
         """Reset the game state for a new game"""

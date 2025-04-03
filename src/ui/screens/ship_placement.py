@@ -160,9 +160,11 @@ class ShipPlacement:
         # Mettre à jour le texte du bouton
         self.difficulty_button.text = f"Difficulté: {self.difficulties[self.current_difficulty_index]}"
         
-        # En mode solo, définir la difficulté pour le GameState
+        # En mode solo, définir explicitement la difficulté pour le GameState
         if self.game.network_mode == "solo" and hasattr(self, 'game_state'):
-            self.game_state.difficulty = difficulty
+            # S'assurer que game_state a bien un attribut difficulty
+            setattr(self.game_state, 'difficulty', difficulty)
+            print(f"Difficulté de l'IA définie à : {difficulty}")
         
         self.status_text = f"Difficulté réglée sur {self.difficulties[self.current_difficulty_index]}"
         self.status_color = WHITE
