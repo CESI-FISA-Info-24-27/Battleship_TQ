@@ -2,17 +2,25 @@
 import random
 import time
 import pygame
-from game.constants import (PLACEMENT_TIME, TURN_TIME, MESSAGE_DURATION, 
-                           FACILE, MOYEN, DIFFICILE, NAVIRES)
+import logging
+from game.constants import (
+    PLACEMENT_TIME, TURN_TIME, MESSAGE_DURATION, 
+    FACILE, MOYEN, DIFFICILE, NAVIRES
+)
 from game.player import Player
 from game.ai_player import AIPlayer
 from game.ship import Ship
+
+# Configuration des logs
+logging.basicConfig(level=logging.DEBUG, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 class GameManager:
     def __init__(self):
         self.player = Player("Joueur")
         self.opponent = None
         self.is_online = False
+        self.network_client = None  # Ajout de la référence au client réseau
         self.current_player = None  # "player" ou "opponent"
         self.game_state = "waiting"  # "waiting", "placement", "playing", "game_over"
         self.message = ""
@@ -25,6 +33,7 @@ class GameManager:
     
     def start_solo_game(self, difficulty=MOYEN):
         """Démarre une partie solo contre un bot"""
+        logging.info(f"Démarrage d'une partie solo - Difficulté : {difficulty}")
         self.is_online = False
         self.difficulty = difficulty
         self.opponent = AIPlayer(difficulty)
@@ -36,16 +45,38 @@ class GameManager:
     
     def start_online_game(self, opponent_name="Adversaire"):
         """Démarre une partie en ligne"""
+        logging.info("Démarrage d'une partie en ligne")
+        
+        # Réinitialiser le jeu
         self.is_online = True
+        
+        # Créer un joueur opposant
         self.opponent = Player(opponent_name)
+        
+        # Réinitialiser le joueur
         self.player.reset()
+        
+        # Passer à l'état de placement des navires
         self.game_state = "placement"
         self.placement_start_time = pygame.time.get_ticks()
+        
+        # Réinitialiser les messages
         self.message = ""
         self.winner = None
+        
+        # Référence au client réseau
+        # Détermine qui commence en fonction du rôle de l'hôte
+        if self.network_client and self.network_client.is_host:
+            self.current_player = "player"
+            logging.info("Hôte - Le joueur commence")
+        else:
+            self.current_player = "opponent"
+            logging.info("Client - L'adversaire commence")
     
     def start_game(self):
         """Démarre la partie après le placement des navires"""
+        logging.info("Démarrage de la partie après placement des navires")
+        
         # Vérifier si les deux joueurs sont prêts
         if not self.player.ready:
             # Placement aléatoire des navires restants du joueur
@@ -56,15 +87,19 @@ class GameManager:
             bot_ships = [Ship(name, size) for name, size in NAVIRES.items()]
             self.opponent.place_ships(self.opponent.grid, bot_ships)
         
-        # Déterminer aléatoirement qui commence
-        self.current_player = random.choice(["player", "opponent"])
+        # Déterminer aléatoirement qui commence en mode solo
+        if not self.is_online:
+            self.current_player = random.choice(["player", "opponent"])
+        
         self.game_state = "playing"
         self.turn_start_time = pygame.time.get_ticks()
         
+        logging.info(f"Début de la partie - Joueur actuel : {self.current_player}")
         return self.current_player
     
     def _auto_place_player_ships(self):
         """Place automatiquement les navires restants du joueur"""
+        logging.info("Placement automatique des navires du joueur")
         current_ship = self.player.get_current_ship()
         while current_ship:
             placed = False
@@ -84,8 +119,8 @@ class GameManager:
                     break
             
             if not placed:
-                # Si après 100 essais on n'a pas pu placer le navire, c'est qu'il y a un problème
-                # Réinitialiser la grille pourrait être une solution, mais ici on va juste ignorer ce navire
+                # Si après 100 essais on n'a pas pu placer le navire
+                logging.warning(f"Impossible de placer le navire {current_ship.name}")
                 self.player.current_ship_index += 1
             
             current_ship = self.player.get_current_ship()
@@ -94,15 +129,20 @@ class GameManager:
     
     def process_player_shot(self, row, col):
         """Traite un tir du joueur humain"""
+        logging.info(f"Tir du joueur en position ({row}, {col})")
+        
         if self.game_state != "playing" or self.current_player != "player":
+            logging.warning("Tir invalide - Pas le tour du joueur")
             return False, ""
         
         if pygame.time.get_ticks() - self.message_start_time < MESSAGE_DURATION:
-            return False, "message_active"  # Ne pas permettre d'action pendant l'affichage d'un message
+            logging.warning("Tir invalide - Message actif")
+            return False, "message_active"
         
         result = self.player.make_shot(self.opponent.grid, row, col)
         
         if result == "already_shot" or result == "invalid":
+            logging.warning(f"Tir invalide - {result}")
             return False, result
         
         # Afficher le message approprié
@@ -115,6 +155,7 @@ class GameManager:
         
         # Vérifier si le jeu est terminé
         if self.opponent.grid.are_all_ships_sunk():
+            logging.info("Partie terminée - Joueur gagnant")
             self.game_state = "game_over"
             self.winner = "player"
             return True, "game_over"
@@ -127,11 +168,15 @@ class GameManager:
     
     def process_ai_turn(self):
         """Exécute le tour de l'IA"""
+        logging.info("Tour de l'IA")
+        
         if self.game_state != "playing" or self.current_player != "opponent" or not isinstance(self.opponent, AIPlayer):
+            logging.warning("Tour de l'IA invalide")
             return False, ""
         
         if pygame.time.get_ticks() - self.message_start_time < MESSAGE_DURATION:
-            return False, "message_active"  # Ne pas permettre d'action pendant l'affichage d'un message
+            logging.warning("Tir de l'IA impossible - Message actif")
+            return False, "message_active"
         
         # L'IA fait son tir
         row, col = self.opponent.make_shot(self.player.grid)
@@ -150,6 +195,7 @@ class GameManager:
         
         # Vérifier si le jeu est terminé
         if self.player.grid.are_all_ships_sunk():
+            logging.info("Partie terminée - IA gagnante")
             self.game_state = "game_over"
             self.winner = "opponent"
             return True, "game_over"
@@ -160,6 +206,7 @@ class GameManager:
         
         return True, result
     
+    # Les autres méthodes restent identiques aux versions précédentes
     def check_turn_timeout(self):
         """Vérifie si le temps du tour actuel est écoulé"""
         if self.game_state != "playing":
@@ -204,6 +251,7 @@ class GameManager:
     
     def show_message(self, message, color=(255, 255, 255)):
         """Affiche un message temporaire"""
+        logging.info(f"Message affiché : {message}")
         self.message = message
         self.message_color = color
         self.message_start_time = pygame.time.get_ticks()
@@ -234,4 +282,3 @@ class GameManager:
         """Vérifie si un message est actuellement affiché"""
         current_time = pygame.time.get_ticks()
         return current_time - self.message_start_time < MESSAGE_DURATION
-

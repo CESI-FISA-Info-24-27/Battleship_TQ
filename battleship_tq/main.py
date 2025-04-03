@@ -36,7 +36,7 @@ class BattleshipTQ:
         self.difficulty_menu = DifficultyMenu()
         self.ship_placement = ShipPlacementScreen(self.game_manager)
         self.game_screen = GameScreen(self.game_manager)
-        self.online_menu = OnlineMenu()
+        self.online_menu = OnlineMenu(self.game_manager)  # Modification ici
         self.game_over_screen = GameOverScreen(self.game_manager)
         
         # Animation de fond
@@ -85,13 +85,6 @@ class BattleshipTQ:
         
         elif self.current_state == MENU_ONLINE:
             result = self.online_menu.handle_event(event)
-            if isinstance(result, tuple):
-                if result[0] == "create_game":
-                    return MENU_ONLINE
-                elif result[0] == "join_game":
-                    return MENU_ONLINE
-                elif result[0] == "start_online_ai":
-                    return MENU_ONLINE
             return result
         
         elif self.current_state == FIN_PARTIE:
