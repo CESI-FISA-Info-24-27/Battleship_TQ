@@ -43,7 +43,7 @@ class HostScreen:
         # Bouton pour copier l'IP
         self.copy_button = Button(
             panel_x + panel_width // 2 - 100,
-            panel_y + 200,
+            panel_y + 300,
             200,
             40,
             "Copier l'adresse IP",
@@ -241,7 +241,7 @@ class HostScreen:
         
     def _copy_ip_to_clipboard(self):
         try:
-            import pyperclip
+
             pyperclip.copy(self.ip_text)
             print("Adresse IP copiée dans le presse-papiers.")
         except Exception as e:

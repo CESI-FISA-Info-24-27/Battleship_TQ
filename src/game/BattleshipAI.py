@@ -3,338 +3,618 @@ import math
 
 class BattleshipAI:
     """
-    IA avancée pour Bataille Navale avec plusieurs niveaux de sophistication
+    Intelligence artificielle avancée pour le jeu de Bataille Navale avec plusieurs niveaux de difficulté.
     """
     
     def __init__(self, difficulty='expert'):
         """
-        Initialise l'IA de Bataille Navale avec un niveau de difficulté sophistiqué.
+        Initialise l'IA de Bataille Navale avec un niveau de difficulté.
         
         :param difficulty: Niveau de difficulté ('facile', 'moyenne', 'difficile', 'expert')
         """
         self.difficulty = difficulty.lower()
-        
-        # Configuration des navires standard
-        self.ship_sizes = [5, 4, 3, 3, 2]
-        self.ship_names = ["Porte-avion", "Croiseur", "Contre-torpilleur", "Sous-marin", "Torpilleur"]
-        
-        # État de la partie
+        self.ship_sizes = [5, 4, 3, 3, 2]  # Tailles standard des navires
         self.remaining_ships = self.ship_sizes.copy()
-        self.ship_locations = []  # Connaissances accumulées sur les positions probables
-        self.hit_history = []  # Historique complet des hits
-        self.hunt_mode = False
-        self.target_ship = None
         
-        # Paramètres avancés de l'IA
-        self.memory_depth = 10  # Nombre de tirs à mémoriser
-        self.prediction_confidence = {}  # Confiance dans les prédictions de positions
+        # Historique des tirs et des résultats
+        self.shots_history = []
+        self.last_successful_hit = None
+        self.current_hunt_mode = False
+        self.hunt_targets = []
         
+        # Mémoire des tirs réussis pour les stratégies avancées
+        self.successful_hits = []
+        self.ship_hits = {}  # Groupes de hits par navire potentiel
+        
+        # État de la grille de probabilité
+        self.probability_grid = None
+        
+        # Constantes pour les stratégies de tir
+        self.BOARD_SIZE = 10
+
     def choose_target(self, board):
         """
-        Sélectionne une cible en fonction du niveau de difficulté.
+        Choisit une cible en fonction du niveau de difficulté.
         
         :param board: Le plateau de jeu
         :return: Coordonnées (x, y) de la cible
         """
-        # Réinitialiser les prédictions si nécessaire
-        self._update_game_state(board)
+        # Mettre à jour notre historique des tirs
+        self._update_history(board)
         
-        # Stratégies par difficulté
         if self.difficulty == 'facile':
-            return self._facile_strategy(board)
+            return self._easy_strategy(board)
         elif self.difficulty == 'moyenne':
-            return self._moyenne_strategy(board)
+            return self._medium_strategy(board)
         elif self.difficulty == 'difficile':
-            return self._difficile_strategy(board)
-        else:  # mode expert par défaut
+            return self._hard_strategy(board)
+        elif self.difficulty == 'expert':
             return self._expert_strategy(board)
+        else:
+            # Fallback sur la stratégie moyenne si la difficulté n'est pas reconnue
+            print(f"Difficulté non reconnue: {self.difficulty}, fallback sur 'moyenne'")
+            return self._medium_strategy(board)
     
-    def _facile_strategy(self, board):
+    def _update_history(self, board):
         """
-        Stratégie de tir totalement aléatoire.
+        Met à jour l'historique des tirs basé sur l'état actuel du plateau.
+        
+        :param board: Le plateau de jeu
+        """
+        # Récupérer tous les tirs effectués
+        all_shots = []
+        hit_shots = []
+        
+        # Convertir les shots du board en liste pour notre usage interne
+        if hasattr(board, 'shots'):
+            for x, y, hit in board.shots:
+                shot = (x, y)
+                all_shots.append(shot)
+                if hit:
+                    hit_shots.append(shot)
+        
+        # Mettre à jour notre liste interne de tirs réussis
+        self.successful_hits = hit_shots
+        self.shots_history = all_shots
+        
+        # Grouper les hits par navires potentiels
+        self._group_hits_by_ships()
+    
+    def _group_hits_by_ships(self):
+        """
+        Groupe les hits en navires potentiels selon leur proximité.
+        """
+        # Réinitialiser les groupes
+        self.ship_hits = {}
+        
+        # Fonction pour trouver les hits adjacents
+        def find_adjacent_hits(start_hit, all_hits, ship_group):
+            adjacent_directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+            for dx, dy in adjacent_directions:
+                nx, ny = start_hit[0] + dx, start_hit[1] + dy
+                adjacent_hit = (nx, ny)
+                if adjacent_hit in all_hits and adjacent_hit not in ship_group:
+                    ship_group.append(adjacent_hit)
+                    find_adjacent_hits(adjacent_hit, all_hits, ship_group)
+        
+        # Copie des hits pour modification
+        hits_to_process = self.successful_hits.copy()
+        group_id = 0
+        
+        # Tant qu'il reste des hits à traiter
+        while hits_to_process:
+            start_hit = hits_to_process[0]
+            ship_group = [start_hit]
+            hits_to_process.remove(start_hit)
+            
+            # Trouver tous les hits adjacents
+            find_adjacent_hits(start_hit, self.successful_hits, ship_group)
+            
+            # Retirer tous les hits trouvés de la liste à traiter
+            for hit in ship_group:
+                if hit in hits_to_process:
+                    hits_to_process.remove(hit)
+            
+            # Enregistrer le groupe
+            self.ship_hits[group_id] = ship_group
+            group_id += 1
+    
+    def _easy_strategy(self, board):
+        """
+        Stratégie facile : tirs complètement aléatoires.
         
         :param board: Le plateau de jeu
         :return: Coordonnées (x, y) d'une case non touchée
         """
-        width, height = len(board.grid[0]), len(board.grid)
         available = [
-            (x, y) for x in range(width) for y in range(height)
-            if not any(sx == x and sy == y for sx, sy, _ in board.shots)
+            (x, y) for x in range(self.BOARD_SIZE) for y in range(self.BOARD_SIZE)
+            if (x, y) not in self.shots_history
         ]
+        
         return random.choice(available) if available else None
     
-    def _moyenne_strategy(self, board):
+    def _medium_strategy(self, board):
         """
-        Stratégie de tir en damier avec légère intelligence.
+        Stratégie moyenne : tirs en damier + chasse basique.
         
         :param board: Le plateau de jeu
         :return: Coordonnées (x, y) d'une case non touchée
         """
-        width, height = len(board.grid[0]), len(board.grid)
-        
-        # Tirs en damier préférentiel
-        damier_cells = [
-            (x, y) for x in range(width) for y in range(height)
-            if (x + y) % 2 == 0 and not any(sx == x and sy == y for sx, sy, _ in board.shots)
-        ]
-        
-        if damier_cells:
-            return random.choice(damier_cells)
-        
-        # Fallback sur aléatoire
-        return self._facile_strategy(board)
-    
-    def _difficile_strategy(self, board):
-        """
-        Stratégie de tir intelligente avec chasse directionnelle.
-        
-        :param board: Le plateau de jeu
-        :return: Coordonnées (x, y) de la cible
-        """
-        # Priorité : terminer un navire en cours
-        hits = [shot for shot in board.shots if shot[2]]
-        
-        if hits:
-            # Essayer de terminer le dernier navire touché
-            last_hit = hits[-1]
-            target = self._hunt_around_hit(board, last_hit)
+        # Si on a touché un navire, tenter de cibler autour du hit
+        if self.successful_hits:
+            target = self._basic_hunt_mode(board)
             if target:
                 return target
         
-        # Stratégie probabiliste basique
-        return self._calculate_moderate_probability_grid(board)
+        # Sinon, utiliser un pattern en damier
+        checkerboard = [
+            (x, y) for x in range(self.BOARD_SIZE) for y in range(self.BOARD_SIZE)
+            if (x + y) % 2 == 0 and (x, y) not in self.shots_history
+        ]
+        
+        if checkerboard:
+            return random.choice(checkerboard)
+        
+        # Si le damier est épuisé, tirer aléatoirement
+        return self._easy_strategy(board)
+    
+    def _hard_strategy(self, board):
+        """
+        Stratégie difficile : damier intelligent + chasse améliorée + probabilités.
+        
+        :param board: Le plateau de jeu
+        :return: Coordonnées (x, y) d'une cible stratégique
+        """
+        # Si nous avons des hits, passer en mode chasse
+        if self.successful_hits:
+            target = self._advanced_hunt_mode(board, self.successful_hits)
+            if target:
+                return target
+        
+        # Calculer une grille de probabilité simple
+        self._calculate_probability_grid(board)
+        
+        # Combiner damier et probabilités
+        checkerboard_with_prob = []
+        for x in range(self.BOARD_SIZE):
+            for y in range(self.BOARD_SIZE):
+                if (x + y) % 2 == 0 and (x, y) not in self.shots_history:
+                    # Donner un score basé sur la position et la probabilité
+                    score = self.probability_grid[y][x]
+                    checkerboard_with_prob.append(((x, y), score))
+        
+        if checkerboard_with_prob:
+            # Sélectionner avec un biais vers les scores élevés
+            sorted_targets = sorted(checkerboard_with_prob, key=lambda t: t[1], reverse=True)
+            # Prendre parmi les 30% meilleurs scores
+            top_n = max(1, len(sorted_targets) // 3)
+            return sorted_targets[random.randint(0, top_n-1)][0]
+        
+        # Fallback sur stratégie moyenne
+        return self._medium_strategy(board)
     
     def _expert_strategy(self, board):
         """
-        Stratégie de tir ultra-sophistiquée avec prédiction avancée.
+        Stratégie experte : analyse approfondie du plateau, mémoire des patterns.
         
         :param board: Le plateau de jeu
         :return: Coordonnées (x, y) de la cible optimale
         """
-        # Étape 1 : Analyse des navires restants
-        remaining_ship_sizes = sorted(self.remaining_ships, reverse=True)
+        # Si nous avons des hits, utiliser la chasse la plus sophistiquée
+        if self.successful_hits:
+            # Analyser les groupes de hits
+            for group_id, hits in self.ship_hits.items():
+                # Si le groupe contient plusieurs hits, chercher à le compléter
+                if len(hits) >= 2:
+                    target = self._predict_ship_position(hits, self.shots_history)
+                    if target:
+                        return target
+            
+            # Si aucun groupe ne donne de cible évidente, chasse avancée sur tous les hits
+            target = self._advanced_hunt_mode(board, self.successful_hits)
+            if target:
+                return target
         
-        # Étape 2 : Analyse des hits précédents
-        hits = [shot for shot in board.shots if shot[2]]
+        # Calculer une grille de probabilité avancée
+        probability_grid = self._calculate_advanced_probability_grid(board)
         
-        # Étape 3 : Mode chasse intelligente
-        if hits:
-            # Priorité absolue : terminer un navire en cours
-            for hit in reversed(hits):
-                target = self._advanced_hunt_mode(board, hit)
-                if target:
-                    return target
+        # Trouver la case avec la plus haute probabilité
+        max_prob = 0
+        best_targets = []
         
-        # Étape 4 : Prédiction probabiliste multi-niveaux
-        probability_grid = self._create_ultimate_probability_grid(board, remaining_ship_sizes)
+        for y in range(self.BOARD_SIZE):
+            for x in range(self.BOARD_SIZE):
+                if (x, y) not in self.shots_history:
+                    prob = probability_grid[y][x]
+                    if prob > max_prob:
+                        max_prob = prob
+                        best_targets = [(x, y)]
+                    elif prob == max_prob:
+                        best_targets.append((x, y))
         
-        # Étape 5 : Sélection de la meilleure cible
-        best_targets = self._select_optimal_targets(probability_grid, board)
+        if best_targets:
+            return random.choice(best_targets)
         
-        # Étape 6 : Stratégie de sélection finale
-        return self._strategic_target_selection(best_targets, board)
+        # Fallback sur la stratégie difficile
+        return self._hard_strategy(board)
     
-    def _advanced_hunt_mode(self, board, last_hit):
+    def _basic_hunt_mode(self, board):
         """
-        Mode de chasse avancé pour terminer un navire avec une stratégie intelligente.
+        Mode de chasse basique : tir autour des hits.
         
         :param board: Le plateau de jeu
-        :param last_hit: Dernier tir réussi
-        :return: Coordonnées (x, y) de la cible
+        :return: Coordonnées d'une cible ou None
         """
-        x, y, _ = last_hit
-        width, height = len(board.grid[0]), len(board.grid)
-        shots = {(sx, sy) for sx, sy, _ in board.shots}
-        hits = {(sx, sy) for sx, sy, hit in board.shots if hit}
-        
-        # Déterminer la direction du navire
-        def _get_ship_direction(hits):
-            """Trouver la direction du navire basée sur les hits adjacents"""
-            horizontal_hits = [h for h in hits if any((h[0]+1, h[1]) in hits or (h[0]-1, h[1]) in hits)]
-            vertical_hits = [h for h in hits if any((h[0], h[1]+1) in hits or (h[0], h[1]-1) in hits)]
+        # Cibler autour du dernier hit réussi
+        for hit in self.successful_hits:
+            adjacent_cells = [
+                (hit[0] + dx, hit[1] + dy) 
+                for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]
+            ]
             
-            return 'horizontal' if len(horizontal_hits) > len(vertical_hits) else 'vertical'
-        
-        # Filtrer les hits autour du dernier hit
-        adjacent_hits = {
-            (x+dx, y+dy) for dx, dy in [(1,0), (-1,0), (0,1), (0,-1)]
-            if (x+dx, y+dy) in hits
-        }
-        
-        # Si plusieurs hits adjacents, déterminer la direction
-        if len(adjacent_hits) > 0:
-            direction = _get_ship_direction(hits)
+            valid_targets = [
+                cell for cell in adjacent_cells
+                if 0 <= cell[0] < self.BOARD_SIZE and 0 <= cell[1] < self.BOARD_SIZE
+                and cell not in self.shots_history
+            ]
             
-            if direction == 'horizontal':
-                directions = [(1,0), (-1,0)]
-            else:
-                directions = [(0,1), (0,-1)]
-        else:
-            # Si pas de hit adjacent, tester toutes les directions
-            directions = [(1,0), (-1,0), (0,1), (0,-1)]
-        
-        # Trouver les cibles potentielles dans les directions
-        potential_targets = []
-        for dx, dy in directions:
-            # Chercher jusqu'à la longueur du plus grand navire restant
-            max_search_distance = max(self.remaining_ships) if self.remaining_ships else 5
-            
-            for i in range(1, max_search_distance + 1):
-                nx, ny = x + dx * i, y + dy * i
-                
-                # Vérifier que la case est dans la grille et n'a pas été touchée
-                if (0 <= nx < width and 0 <= ny < height and 
-                    (nx, ny) not in shots):
-                    potential_targets.append((nx, ny))
-                else:
-                    break
-        
-        # Randomiser légèrement pour éviter la prévisibilité
-        if potential_targets:
-            # Donner plus de poids aux cibles les plus proches
-            weights = [max(len(potential_targets) - abs(px - x) - abs(py - y), 1) for px, py in potential_targets]
-            return random.choices(potential_targets, weights=weights)[0]
+            if valid_targets:
+                return random.choice(valid_targets)
         
         return None
     
-    def _create_ultimate_probability_grid(self, board, ship_sizes):
+    def _advanced_hunt_mode(self, board, hits):
         """
-        Crée une grille de probabilités ultra-sophistiquée.
+        Mode de chasse avancé pour cibler les cases adjacentes aux hits.
         
         :param board: Le plateau de jeu
-        :param ship_sizes: Tailles des navires restants
-        :return: Grille de probabilités
+        :param hits: Liste des hits non coulés
+        :return: Coordonnées de la cible ou None
         """
-        width, height = len(board.grid[0]), len(board.grid)
-        prob_grid = [[0 for _ in range(width)] for _ in range(height)]
-        shots = {(x, y) for x, y, _ in board.shots}
-        hits = {(x, y) for x, y, hit in board.shots if hit}
+        # Vérifier si hits est non vide
+        if not hits:
+            return None
         
-        # Calcul probabiliste basé sur plusieurs facteurs
-        for ship_size in ship_sizes:
-            for y in range(height):
-                for x in range(width):
-                    # Vérification horizontale
-                    if x + ship_size <= width:
-                        cells = [(x + i, y) for i in range(ship_size)]
-                        if all((cx, cy) not in shots or (cx, cy) in hits for cx, cy in cells):
-                            for cx, cy in cells:
-                                prob_grid[cy][cx] += ship_size * 3
+        # Convertir tous les éléments de hits en tuples pour garantir la cohérence
+        hits = [tuple(h) if isinstance(h, list) else h for h in hits]
+        
+        # Déterminer la direction probable du navire
+        direction = self._get_ship_direction(hits)
+        
+        # Trouver les extrémités des séquences de hits
+        if direction == 'horizontal':
+            # Trouver les extrémités horizontales
+            for group_id, group_hits in self.ship_hits.items():
+                if len(group_hits) < 2:
+                    continue
                     
-                    # Vérification verticale
-                    if y + ship_size <= height:
-                        cells = [(x, y + i) for i in range(ship_size)]
-                        if all((cx, cy) not in shots or (cx, cy) in hits for cx, cy in cells):
-                            for cx, cy in cells:
-                                prob_grid[cy][cx] += ship_size * 3
+                # Trier par coordonnée x
+                sorted_hits = sorted(group_hits, key=lambda h: h[0])
+                leftmost = sorted_hits[0]
+                rightmost = sorted_hits[-1]
+                
+                # Vérifier à gauche
+                left_target = (leftmost[0] - 1, leftmost[1])
+                if (0 <= left_target[0] < self.BOARD_SIZE and 
+                    left_target not in self.shots_history):
+                    return left_target
+                
+                # Vérifier à droite
+                right_target = (rightmost[0] + 1, rightmost[1])
+                if (right_target[0] < self.BOARD_SIZE and 
+                    right_target not in self.shots_history):
+                    return right_target
+                    
+        elif direction == 'vertical':
+            # Trouver les extrémités verticales
+            for group_id, group_hits in self.ship_hits.items():
+                if len(group_hits) < 2:
+                    continue
+                
+                # Trier par coordonnée y
+                sorted_hits = sorted(group_hits, key=lambda h: h[1])
+                topmost = sorted_hits[0]
+                bottommost = sorted_hits[-1]
+                
+                # Vérifier en haut
+                top_target = (topmost[0], topmost[1] - 1)
+                if (0 <= top_target[1] < self.BOARD_SIZE and 
+                    top_target not in self.shots_history):
+                    return top_target
+                
+                # Vérifier en bas
+                bottom_target = (bottommost[0], bottommost[1] + 1)
+                if (bottom_target[1] < self.BOARD_SIZE and 
+                    bottom_target not in self.shots_history):
+                    return bottom_target
         
-        # Bonus pour les cases adjacentes aux hits
-        for x, y in hits:
-            for dx, dy in [(1,0), (-1,0), (0,1), (0,-1)]:
-                nx, ny = x + dx, y + dy
-                if 0 <= nx < width and 0 <= ny < height and (nx, ny) not in shots:
-                    prob_grid[ny][nx] += 10
+        # Si aucune extrémité n'est valide ou si la direction est inconnue,
+        # essayer toutes les cases adjacentes
+        for hit in hits:
+            directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+            
+            # Si direction connue, prioritiser cette direction
+            if direction == 'horizontal':
+                directions = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+            elif direction == 'vertical':
+                directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+            
+            for dx, dy in directions:
+                target = (hit[0] + dx, hit[1] + dy)
+                if (0 <= target[0] < self.BOARD_SIZE and 
+                    0 <= target[1] < self.BOARD_SIZE and 
+                    target not in self.shots_history):
+                    return target
         
-        # Bonus zones centrales
-        center_x, center_y = width // 2, height // 2
-        for y in range(height):
-            for x in range(width):
-                dist_to_center = math.sqrt((x - center_x)**2 + (y - center_y)**2)
-                prob_grid[y][x] += max(0, 10 - dist_to_center)
+        return None
+    
+    def _predict_ship_position(self, hits, shots):
+        """
+        Prédit la position probable d'un navire à partir de hits alignés.
+        
+        :param hits: Liste des hits pour un navire potentiel
+        :param shots: Liste de tous les tirs effectués
+        :return: Coordonnées cible ou None
+        """
+        if len(hits) < 2:
+            return None
+        
+        # Déterminer si les hits sont alignés horizontalement ou verticalement
+        xs = [h[0] for h in hits]
+        ys = [h[1] for h in hits]
+        
+        # Vérifier l'alignement horizontal
+        if len(set(ys)) == 1:  # Tous les y sont identiques
+            y = ys[0]
+            min_x = min(xs)
+            max_x = max(xs)
+            
+            # Vérifier s'il y a des "trous" dans la séquence
+            for x in range(min_x, max_x + 1):
+                if (x, y) not in hits and (x, y) not in shots:
+                    return (x, y)
+            
+            # Essayer d'étendre à gauche
+            if min_x > 0 and (min_x - 1, y) not in shots:
+                return (min_x - 1, y)
+                
+            # Essayer d'étendre à droite
+            if max_x < self.BOARD_SIZE - 1 and (max_x + 1, y) not in shots:
+                return (max_x + 1, y)
+                
+        # Vérifier l'alignement vertical
+        elif len(set(xs)) == 1:  # Tous les x sont identiques
+            x = xs[0]
+            min_y = min(ys)
+            max_y = max(ys)
+            
+            # Vérifier s'il y a des "trous" dans la séquence
+            for y in range(min_y, max_y + 1):
+                if (x, y) not in hits and (x, y) not in shots:
+                    return (x, y)
+            
+            # Essayer d'étendre en haut
+            if min_y > 0 and (x, min_y - 1) not in shots:
+                return (x, min_y - 1)
+                
+            # Essayer d'étendre en bas
+            if max_y < self.BOARD_SIZE - 1 and (x, max_y + 1) not in shots:
+                return (x, max_y + 1)
+        
+        return None
+    
+    def _get_ship_direction(self, hits):
+        """
+        Déterminer la direction probable d'un navire à partir des hits.
+        
+        :param hits: Liste des coordonnées de hits
+        :return: 'horizontal', 'vertical' ou None si indéterminé
+        """
+        if len(hits) < 2:
+            return None
+        
+        # Vérifier que hits est bien une liste de coordonnées
+        if not all(isinstance(h, tuple) or isinstance(h, list) for h in hits):
+            print(f"ERREUR: hits contient un élément non valide: {hits}")
+            return None
+        
+        # Vérifier s'il y a une continuité horizontale
+        horizontal_hits = []
+        for h in hits:
+            adjacent_horizontal = False
+            for dx in [-1, 1]:
+                adjacent_pos = (h[0] + dx, h[1])
+                if adjacent_pos in hits:
+                    adjacent_horizontal = True
+                    break
+            if adjacent_horizontal:
+                horizontal_hits.append(h)
+        
+        # Vérifier s'il y a une continuité verticale
+        vertical_hits = []
+        for h in hits:
+            adjacent_vertical = False
+            for dy in [-1, 1]:
+                adjacent_pos = (h[0], h[1] + dy)
+                if adjacent_pos in hits:
+                    adjacent_vertical = True
+                    break
+            if adjacent_vertical:
+                vertical_hits.append(h)
+        
+        # Déterminer la direction probable
+        if len(horizontal_hits) > len(vertical_hits):
+            return 'horizontal'
+        elif len(vertical_hits) > len(horizontal_hits):
+            return 'vertical'
+        else:
+            return None  # Direction indéterminée
+    
+    def _calculate_probability_grid(self, board):
+        """
+        Calcule une grille de probabilité simple pour le ciblage.
+        
+        :param board: Le plateau de jeu
+        :return: Coordonnées (x, y) de la case à plus forte probabilité
+        """
+        # Initialiser la grille de probabilité
+        prob_grid = [[0 for _ in range(self.BOARD_SIZE)] for _ in range(self.BOARD_SIZE)]
+        
+        # Pour chaque navire restant, calculer les placements possibles
+        for ship_size in self.remaining_ships:
+            # Essayer tous les placements horizontaux
+            for y in range(self.BOARD_SIZE):
+                for x in range(self.BOARD_SIZE - ship_size + 1):
+                    valid = True
+                    for i in range(ship_size):
+                        if (x + i, y) in self.shots_history:
+                            valid = False
+                            break
+                    
+                    if valid:
+                        for i in range(ship_size):
+                            prob_grid[y][x + i] += 1
+            
+            # Essayer tous les placements verticaux
+            for x in range(self.BOARD_SIZE):
+                for y in range(self.BOARD_SIZE - ship_size + 1):
+                    valid = True
+                    for i in range(ship_size):
+                        if (x, y + i) in self.shots_history:
+                            valid = False
+                            break
+                    
+                    if valid:
+                        for i in range(ship_size):
+                            prob_grid[y + i][x] += 1
+        
+        # Stocker la grille pour référence future
+        self.probability_grid = prob_grid
+        
+        # Trouver les coordonnées avec la plus haute probabilité
+        max_prob = 0
+        best_targets = []
+        
+        for y in range(self.BOARD_SIZE):
+            for x in range(self.BOARD_SIZE):
+                if (x, y) not in self.shots_history and prob_grid[y][x] > max_prob:
+                    max_prob = prob_grid[y][x]
+                    best_targets = [(x, y)]
+                elif (x, y) not in self.shots_history and prob_grid[y][x] == max_prob:
+                    best_targets.append((x, y))
+        
+        if best_targets:
+            return random.choice(best_targets)
+        
+        # Si aucune cible n'est trouvée, revenir à une sélection aléatoire
+        return self._easy_strategy(board)
+    
+    def _calculate_advanced_probability_grid(self, board):
+        """
+        Calcule une grille de probabilité avancée pour le ciblage expert.
+        
+        :param board: Le plateau de jeu
+        :return: Grille de probabilité
+        """
+        # Initialiser la grille de probabilité
+        prob_grid = [[0 for _ in range(self.BOARD_SIZE)] for _ in range(self.BOARD_SIZE)]
+        
+        # Pour chaque navire restant, calculer les placements possibles
+        for ship_size in self.remaining_ships:
+            # Essayer tous les placements horizontaux
+            for y in range(self.BOARD_SIZE):
+                for x in range(self.BOARD_SIZE - ship_size + 1):
+                    placement = [(x + i, y) for i in range(ship_size)]
+                    
+                    # Vérifier si le placement est valide
+                    valid = True
+                    contains_hit = False
+                    
+                    for pos in placement:
+                        # Si on a déjà tiré et manqué, ce n'est pas valide
+                        if pos in self.shots_history and pos not in self.successful_hits:
+                            valid = False
+                            break
+                        
+                        # Si le placement contient un hit, c'est un bonus
+                        if pos in self.successful_hits:
+                            contains_hit = True
+                    
+                    if valid:
+                        # Bonus si le placement contient un hit existant
+                        weight = 2 if contains_hit else 1
+                        
+                        for pos in placement:
+                            if pos not in self.shots_history:
+                                prob_grid[pos[1]][pos[0]] += weight
+            
+            # Essayer tous les placements verticaux
+            for x in range(self.BOARD_SIZE):
+                for y in range(self.BOARD_SIZE - ship_size + 1):
+                    placement = [(x, y + i) for i in range(ship_size)]
+                    
+                    # Vérifier si le placement est valide
+                    valid = True
+                    contains_hit = False
+                    
+                    for pos in placement:
+                        # Si on a déjà tiré et manqué, ce n'est pas valide
+                        if pos in self.shots_history and pos not in self.successful_hits:
+                            valid = False
+                            break
+                        
+                        # Si le placement contient un hit, c'est un bonus
+                        if pos in self.successful_hits:
+                            contains_hit = True
+                    
+                    if valid:
+                        # Bonus si le placement contient un hit existant
+                        weight = 2 if contains_hit else 1
+                        
+                        for pos in placement:
+                            if pos not in self.shots_history:
+                                prob_grid[pos[1]][pos[0]] += weight
+        
+        # Mettre en évidence les cellules adjacentes aux hits
+        for hit in self.successful_hits:
+            for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+                nx, ny = hit[0] + dx, hit[1] + dy
+                if (0 <= nx < self.BOARD_SIZE and 0 <= ny < self.BOARD_SIZE and 
+                    (nx, ny) not in self.shots_history):
+                    prob_grid[ny][nx] += 3
+        
+        # Bonus pour les cellules dans l'alignement de hits consécutifs
+        for group_id, group_hits in self.ship_hits.items():
+            if len(group_hits) >= 2:
+                direction = self._get_ship_direction(group_hits)
+                
+                if direction == 'horizontal':
+                    min_x = min(h[0] for h in group_hits)
+                    max_x = max(h[0] for h in group_hits)
+                    y = group_hits[0][1]  # Tous les y sont identiques
+                    
+                    # Bonus à gauche
+                    if min_x > 0 and (min_x - 1, y) not in self.shots_history:
+                        prob_grid[y][min_x - 1] += 5
+                    
+                    # Bonus à droite
+                    if max_x < self.BOARD_SIZE - 1 and (max_x + 1, y) not in self.shots_history:
+                        prob_grid[y][max_x + 1] += 5
+                
+                elif direction == 'vertical':
+                    min_y = min(h[1] for h in group_hits)
+                    max_y = max(h[1] for h in group_hits)
+                    x = group_hits[0][0]  # Tous les x sont identiques
+                    
+                    # Bonus en haut
+                    if min_y > 0 and (x, min_y - 1) not in self.shots_history:
+                        prob_grid[min_y - 1][x] += 5
+                    
+                    # Bonus en bas
+                    if max_y < self.BOARD_SIZE - 1 and (x, max_y + 1) not in self.shots_history:
+                        prob_grid[max_y + 1][x] += 5
         
         return prob_grid
-    
-    def _select_optimal_targets(self, probability_grid, board):
-        """
-        Sélectionne les meilleures cibles selon la grille de probabilités.
-        
-        :param probability_grid: Grille de probabilités
-        :param board: Le plateau de jeu
-        :return: Liste des meilleures cibles
-        """
-        width, height = len(board.grid[0]), len(board.grid)
-        shots = {(x, y) for x, y, _ in board.shots}
-        
-        # Trouver les cibles non touchées avec la probabilité maximale
-        max_prob = max(max(row) for row in probability_grid)
-        best_targets = [
-            (x, y) for y in range(height) 
-            for x in range(width) 
-            if probability_grid[y][x] == max_prob and (x, y) not in shots
-        ]
-        
-        return best_targets
-    
-    def _strategic_target_selection(self, best_targets, board):
-        """
-        Sélection stratégique finale parmi les meilleures cibles.
-        
-        :param best_targets: Liste des meilleures cibles
-        :param board: Le plateau de jeu
-        :return: Coordonnées (x, y) de la cible
-        """
-        # Si plusieurs cibles optimales, appliquer des critères de départage
-        if len(best_targets) > 1:
-            # Critères de départage : proximité des hits précédents
-            hits = [shot for shot in board.shots if shot[2]]
-            
-            if hits:
-                last_hit = hits[-1]
-                best_targets.sort(key=lambda t: math.sqrt((t[0] - last_hit[0])**2 + (t[1] - last_hit[1])**2))
-        
-        return random.choice(best_targets)
-    
-    def _calculate_moderate_probability_grid(self, board):
-        """
-        Calcul de probabilité niveau intermédiaire.
-        
-        :param board: Le plateau de jeu
-        :return: Coordonnées (x, y) de la cible
-        """
-        width, height = len(board.grid[0]), len(board.grid)
-        prob = [[0 for _ in range(width)] for _ in range(height)]
-        shots = {(x, y) for x, y, _ in board.shots}
-        hits = {(x, y) for x, y, hit in board.shots if hit}
-        
-        # Calcul probabiliste simple
-        for ship_size in self.remaining_ships:
-            for y in range(height):
-                for x in range(width):
-                    # Horizontal
-                    if x + ship_size <= width:
-                        cells = [(x + i, y) for i in range(ship_size)]
-                        if all((cx, cy) not in shots or (cx, cy) in hits for cx, cy in cells):
-                            for cx, cy in cells:
-                                if (cx, cy) not in shots:
-                                    prob[cy][cx] += 2
-                    
-                    # Vertical
-                    if y + ship_size <= height:
-                        cells = [(x, y + i) for i in range(ship_size)]
-                        if all((cx, cy) not in shots or (cx, cy) in hits for cx, cy in cells):
-                            for cx, cy in cells:
-                                if (cx, cy) not in shots:
-                                    prob[cy][cx] += 2
-        
-        max_val = max(max(row) for row in prob)
-        best = [(x, y) for y in range(height) for x in range(width) if prob[y][x] == max_val]
-        return random.choice(best)
-    
-    def _update_game_state(self, board):
-        """
-        Met à jour l'état global du jeu.
-        
-        :param board: Le plateau de jeu
-        """
-        # Mettre à jour les navires restants
-        sunk_ships = [ship for ship in self.ship_sizes if sum(1 for shot in board.shots if shot[2]) >= ship]
-        for ship in sunk_ships:
-            if ship in self.remaining_ships:
-                self.remaining_ships.remove(ship)
-        
-        # Mémoriser l'historique des hits
-        hits = [shot for shot in board.shots if shot[2]]
-        self.hit_history = hits[-self.memory_depth:]
     
     def update_ship_status(self, ships_sunk):
         """
@@ -342,17 +622,16 @@ class BattleshipAI:
         
         :param ships_sunk: Liste des tailles de navires coulés
         """
-        for ship_size in ships_sunk:
-            if ship_size in self.remaining_ships:
-                self.remaining_ships.remove(ship_size)
+        for s in ships_sunk:
+            if s in self.remaining_ships:
+                self.remaining_ships.remove(s)
     
     def reset(self):
         """
         Réinitialise l'état de l'IA.
         """
         self.remaining_ships = self.ship_sizes.copy()
-        self.ship_locations = []
-        self.hit_history = []
-        self.hunt_mode = False
-        self.target_ship = None
-        self.prediction_confidence = {}
+        self.shots_history = []
+        self.successful_hits = []
+        self.ship_hits = {}
+        self.probability_grid = None

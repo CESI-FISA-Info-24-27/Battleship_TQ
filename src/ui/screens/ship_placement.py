@@ -160,15 +160,25 @@ class ShipPlacement:
         # Mettre à jour le texte du bouton
         self.difficulty_button.text = f"Difficulté: {self.difficulties[self.current_difficulty_index]}"
         
-        # En mode solo, définir explicitement la difficulté pour le GameState
-        if self.game.network_mode == "solo" and hasattr(self, 'game_state'):
-            # S'assurer que game_state a bien un attribut difficulty
-            setattr(self.game_state, 'difficulty', difficulty)
-            print(f"Difficulté de l'IA définie à : {difficulty}")
+        # En mode solo, définir la difficulté pour le GameState
+        if self.game.network_mode == "solo":
+            if not hasattr(self, 'game_state'):
+                # Créer un game_state s'il n'existe pas encore
+                from ...game.game_state import GameState
+                self.game_state = GameState()
+                self.game_state.is_solo_mode = True
+                print("Nouveau game_state créé pour stocker la difficulté")
+                
+            # Maintenant on peut définir la difficulté
+            self.game_state.difficulty = difficulty
+            print(f"Difficulté mise à jour dans game_state: {difficulty}")
+        
+        # Stocker également la difficulté dans une variable de classe pour s'assurer qu'elle est conservée
+        self.__class__.last_selected_difficulty = difficulty
         
         self.status_text = f"Difficulté réglée sur {self.difficulties[self.current_difficulty_index]}"
         self.status_color = WHITE
-        
+            
     def _load_background(self):
         """Charger et redimensionner l'image de fond si disponible"""
         try:
@@ -240,6 +250,9 @@ class ShipPlacement:
         
         self._draw_ships_selection(screen)
         
+            # Assurez-vous d'initialiser la police en haut de votre code
+        self.info_font = pygame.font.Font(None, 18)  # Police par défaut, taille 18
+
         instructions = [
             "1. Cliquez sur la grille pour placer le navire sélectionné",
             "2. Utilisez R ou le bouton Tourner pour changer l'orientation",
@@ -248,10 +261,19 @@ class ShipPlacement:
         x_position = SCREEN_WIDTH * 0.85
         y_base = SCREEN_HEIGHT * 0.5
 
-        for i, text in enumerate(instructions):
+        # Trouver la largeur maximale pour aligner correctement
+        max_width = 0
+        temp_surfaces = []
+        for text in instructions:
             instr_surface = self.info_font.render(text, True, LIGHT_BLUE)
+            temp_surfaces.append(instr_surface)
+            max_width = max(max_width, instr_surface.get_width())
+
+        for i, instr_surface in enumerate(temp_surfaces):
+            # On calcule la position x pour que le bloc reste centré à x_position
+            left_x = x_position - (max_width / 2)
             instr_rect = instr_surface.get_rect(
-                center=(x_position, y_base - 25 + i * 25)
+                topleft=(left_x, y_base - 25 + i * 25 - instr_surface.get_height()/2)
             )
             screen.blit(instr_surface, instr_rect)
         
