@@ -98,6 +98,18 @@ class GameScreen:
                     if hasattr(self.game, 'screens') and "ship_placement" in self.game.screens and hasattr(self.game.screens["ship_placement"], 'game_state'):
                         self.game_state = self.game.screens["ship_placement"].game_state
                         print("État du jeu récupéré de l'écran de placement")
+                        
+                        # Vérifier si la difficulté a été correctement définie
+                        if hasattr(self.game_state, 'difficulty'):
+                            print(f"Difficulté dans game_state: {self.game_state.difficulty}")
+                            
+                            # Réinitialiser l'IA avec la difficulté choisie si nécessaire
+                            if hasattr(self.game_state, 'ai') and self.game_state.ai:
+                                current_difficulty = getattr(self.game_state.ai, 'difficulty', None)
+                                if current_difficulty != self.game_state.difficulty:
+                                    print(f"Réinitialisation de l'IA avec la difficulté: {self.game_state.difficulty}")
+                                    from src.game.BattleshipAI import BattleshipAI
+                                    self.game_state.ai = BattleshipAI(self.game_state.difficulty)
                     else:
                         # Créer un nouveau GameState si nécessaire
                         from ...game.game_state import GameState

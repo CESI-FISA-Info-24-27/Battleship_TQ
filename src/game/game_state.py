@@ -1,3 +1,4 @@
+from importlib import import_module
 from .player import Player
 from ..utils.constants import PLACING_SHIPS, WAITING_FOR_OPPONENT, YOUR_TURN, OPPONENT_TURN, GAME_OVER, GRID_SIZE
 
@@ -15,8 +16,13 @@ class GameState:
         self.last_shot = None  # (x, y, hit, ship_id, sunk)
         self.is_solo_mode = False  # Flag pour indiquer le mode solo
         
-        # Nouvelle propriété pour la difficulté de l'IA
-        self.difficulty = 'moyenne'
+        # Récupérer la difficulté depuis ShipPlacement si disponible
+        if hasattr(import_module('src.ui.screens.ship_placement').ShipPlacement, 'last_selected_difficulty'):
+            self.difficulty = import_module('src.ui.screens.ship_placement').ShipPlacement.last_selected_difficulty
+        else:
+            self.difficulty = 'moyenne'  # Valeur par défaut
+        
+        print(f"GameState initialisé avec difficulté: {self.difficulty}")
         
         # Instance d'IA pour le mode solo
         self.ai = None
@@ -90,6 +96,7 @@ class GameState:
                 
         return True
     
+    
     def bot_play(self):
         """
         Faire jouer le bot (en mode solo)
@@ -105,8 +112,15 @@ class GameState:
         
         # Initialiser l'IA si ce n'est pas déjà fait
         if not self.ai:
-            from src. game.BattleshipAI import BattleshipAI
-            self.ai = BattleshipAI(self.difficulty)
+            try:
+                from src.game.BattleshipAI import BattleshipAI
+                print(f"Initialisation de l'IA avec difficulté: {self.difficulty}")
+                self.ai = BattleshipAI(self.difficulty)
+            except Exception as e:
+                print(f"Erreur lors de l'initialisation de l'IA: {e}")
+                # Fallback à la difficulté moyenne en cas d'erreur
+                from src.game.BattleshipAI import BattleshipAI
+                self.ai = BattleshipAI('moyenne')
         
         # Choisir une cible en fonction de la difficulté
         x, y = self.ai.choose_target(player.board)
