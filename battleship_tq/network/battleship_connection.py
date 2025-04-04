@@ -335,9 +335,144 @@ class BattleshipConnection:
         # Cette fonction existe pour la compatibilité avec le code existant
         return True
     
+    # Modification à apporter à network/battleship_connection.py
+# Ajouter la propriété connection_status pour compatibilité
+
+class BattleshipConnection:
+    def __init__(self, username, port, matchmaking_url):
+        self.username = username
+        self.port = port
+        self.matchmaking_url = matchmaking_url
+        self.opponent = None
+        self.match_code = None
+        self.is_match_active = False
+        self.my_turn = False  # Indicateur pour savoir si c'est le tour du joueur
+        self.game_board = {}  # Pour suivre les positions des navires et les tirs
+        self.moves = []  # Liste des coups effectués
+        self.winner = None
+        self.message_callback = None
+        self.is_host = False
+        self.socket = None
+        self.last_network_message = None
+        # Ajout d'une propriété connection_status pour compatibilité avec NetworkClient
+        self.connection_status = "Non connecté"
+        
+        # Automatically register with the server
+        self.auto_register()
+        
+    # Après auto_register, ajouter cette mise à jour du statut
+    def auto_register(self):
+        """Auto-register the player with the server"""
+        try:
+            print(f"Tentative d'enregistrement de {self.username} sur {self.matchmaking_url}...")
+            response = requests.post(f"{self.matchmaking_url}/auto_join", json={
+                "username": self.username, 
+                "port": self.port
+            })
+            if response.status_code == 200:
+                print(f"✅ {self.username} enregistré sur le serveur.")
+                self.connection_status = "Connecté au serveur"
+                return True
+            else:
+                print(f"❌ Impossible de s'enregistrer sur le serveur: {response.text}")
+                self.connection_status = f"Erreur d'enregistrement: {response.text}"
+                return False
+        except Exception as e:
+            print(f"❌ Erreur de connexion au serveur: {e}")
+            self.connection_status = f"Erreur de connexion: {e}"
+            return False
+            
+    # Mettre à jour les méthodes qui modifient l'état de la connexion
+    def create_match(self, match_code):
+        """Create a new match with the given code"""
+        try:
+            print(f"Création d'un match avec le code: {match_code}")
+            self.connection_status = "Création d'un match..."
+            response = requests.post(f"{self.matchmaking_url}/create_match", json={
+                "player_id": self.username,
+                "code": match_code
+            })
+            print(f"Réponse: {response.status_code} - {response.text}")
+            
+            if response.status_code == 200:
+                self.match_code = match_code
+                self.is_host = True
+                self.connection_status = f"Match créé avec le code {match_code}. En attente d'un adversaire..."
+                print(f"✅ Match créé avec le code {match_code}. En attente d'un adversaire...")
+                
+                # Polling pour vérifier si quelqu'un a rejoint
+                for _ in range(60):  # 60 secondes maximum d'attente
+                    time.sleep(1)
+                    try:
+                        status_response = requests.get(f"{self.matchmaking_url}/match_status", params={"code": match_code})
+                        if status_response.status_code == 200:
+                            status_data = status_response.json()
+                            print(f"Statut du match: {status_data}")
+                            
+                            if status_data.get("status") == "active":
+                                self.opponent = status_data.get("opponent")
+                                self.is_match_active = True
+                                self.my_turn = self.is_host  # Le créateur commence
+                                self.connection_status = f"Connecté à {self.opponent}"
+                                print(f"✅ {self.opponent} a rejoint le match!")
+                                return True
+                    except Exception as e:
+                        print(f"Erreur lors de la vérification du statut: {e}")
+                
+                self.connection_status = "Délai d'attente dépassé, aucun adversaire n'a rejoint."
+                print("⌛ Délai d'attente dépassé, aucun adversaire n'a rejoint.")
+                return False
+            else:
+                self.connection_status = f"Erreur: {response.text}"
+                print(f"❌ Impossible de créer le match: {response.text}")
+                return False
+        except Exception as e:
+            self.connection_status = f"Erreur: {str(e)}"
+            print(f"❌ Erreur lors de la création du match: {e}")
+            return False
+
+    def join_match(self, match_code):
+        """Join a match with the provided code"""
+        try:
+            print(f"Tentative de rejoindre le match avec le code: {match_code}")
+            self.connection_status = "Tentative de rejoindre le match..."
+            response = requests.post(f"{self.matchmaking_url}/join_match", json={
+                "player_id": self.username, 
+                "code": match_code
+            })
+            
+            print(f"Réponse du serveur: Code {response.status_code}")
+            print(f"Contenu de la réponse: {response.text}")
+            
+            if response.status_code == 200:
+                data = response.json()
+                players = data.get('players', [])
+                if len(players) == 2:
+                    self.opponent = players[0] if players[1] == self.username else players[1]
+                    self.connection_status = f"Connecté à {self.opponent}"
+                    print(f"✅ Match rejoint avec le code {match_code}. Adversaire: {self.opponent}.")
+                    self.match_code = match_code
+                    self.is_match_active = True
+                    self.is_host = False
+                    self.my_turn = not self.is_host  # Celui qui rejoint commence en second
+                    return True
+                else:
+                    self.connection_status = "Format de réponse inattendu"
+                    print(f"⚠️ Format de réponse inattendu: {data}")
+                    return False
+            else:
+                self.connection_status = f"Erreur: {response.text}"
+                print(f"❌ Impossible de rejoindre le match: {response.text}")
+                return False
+        except Exception as e:
+            self.connection_status = f"Erreur: {str(e)}"
+            print(f"❌ Erreur de connexion au match: {e}")
+            return False
+            
     def disconnect(self):
         """Disconnect from the server (for compatibility with NetworkClient)"""
         print("Déconnexion du serveur...")
+        self.connection_status = "Déconnexion..."
         self.is_match_active = False
         if self.socket:
             try:
@@ -347,18 +482,13 @@ class BattleshipConnection:
         # Notifier le serveur de la déconnexion
         try:
             requests.post(f"{self.matchmaking_url}/disconnect", json={"username": self.username})
+            self.connection_status = "Déconnecté"
             print("✅ Déconnexion réussie")
         except Exception as e:
+            self.connection_status = f"Erreur de déconnexion: {str(e)}"
             print(f"⚠️ Erreur lors de la notification de déconnexion: {e}")
     
-    def is_connected(self):
-        """Check if connection is active (for compatibility with NetworkClient)"""
-        return self.is_match_active
-    
-    def _handle_network_message(self, message):
-        """Handle network messages (for compatibility with NetworkClient)"""
-        print(f"Traitement d'un message réseau (compatibilité): {message}")
-        self.last_network_message = message
-        # Appeler le callback si défini
-        if self.message_callback:
-            self.message_callback(message)
+    def set_message_callback(self, callback):
+        """Définit un callback pour les messages entrants"""
+        print(f"Définition du callback de message pour BattleshipConnection")
+        self.message_callback = callback

@@ -50,7 +50,7 @@ class GameManager:
     
     def start_online_game(self, opponent_name="Adversaire"):
         """Démarre une partie en ligne"""
-        logging.info("Démarrage d'une partie en ligne")
+        logging.info(f"Démarrage d'une partie en ligne contre {opponent_name}")
         
         # Réinitialiser le jeu
         self.is_online = True
@@ -72,134 +72,26 @@ class GameManager:
         # Configurer le client réseau
         if self.network_client:
             # Définir le callback pour les messages réseau
-            self.network_client.set_message_callback(self._handle_network_message)
+            if hasattr(self.network_client, 'set_message_callback'):
+                self.network_client.set_message_callback(self._handle_network_message)
+            else:
+                # Utiliser directement l'attribut message_callback
+                self.network_client.message_callback = self._handle_network_message
             
-            # Déterminer qui commence en fonction du rôle de l'hôte
-            if self.network_client.is_host:
+            # Déterminer qui commence - basé sur qui est l'hôte, pas sur my_turn qui peut être désynchronisé
+            if hasattr(self.network_client, 'is_host') and self.network_client.is_host:
+                # L'hôte commence toujours
                 self.current_player = "player"
+                if hasattr(self.network_client, 'my_turn'):
+                    self.network_client.my_turn = True
                 logging.info("Hôte - Le joueur commence")
             else:
+                # Le client ne commence jamais
                 self.current_player = "opponent"
+                if hasattr(self.network_client, 'my_turn'):
+                    self.network_client.my_turn = False
                 logging.info("Client - L'adversaire commence")
-    
-    def cleanup_network(self):
-        """Nettoie les ressources réseau"""
-        logging.info("Nettoyage des ressources réseau")
-        if self.network_client:
-            try:
-                self.network_client.disconnect()
-                logging.info("Client réseau déconnecté")
-            except Exception as e:
-                logging.error(f"Erreur lors de la déconnexion réseau: {e}")
-            self.network_client = None
-    
-    def _handle_network_message(self, message):
-        """Gère les messages réseau reçus"""
-        logging.info(f"Message réseau reçu: {message}")
-        self.last_network_message = message
-        
-        # Traiter différents types de messages
-        if message.get('type') == 'shot':
-            row, col = message.get('row'), message.get('col')
-            logging.info(f"Tir reçu de l'adversaire: ({row}, {col})")
-            
-            # Appliquer le tir sur notre grille
-            result = self.player.grid.receive_shot(row, col)
-            
-            # Envoyer le résultat du tir
-            self._send_shot_result(result, row, col)
-            
-            # Afficher le message approprié
-            if result == "hit":
-                self.show_message("TOUCHÉ!", (255, 165, 0))
-            elif result == "miss":
-                self.show_message("MANQUÉ!", (135, 206, 250))
-            elif result == "sunk":
-                self.show_message("COULÉ!", (255, 50, 50))
-            
-            # Vérifier si le jeu est terminé
-            if self.player.grid.are_all_ships_sunk():
-                logging.info("Partie terminée - Adversaire gagnant")
-                self.game_state = "game_over"
-                self.winner = "opponent"
                 
-                # Informer l'adversaire de la victoire
-                self._send_game_over("opponent")
-            else:
-                # Passer le tour au joueur
-                self.current_player = "player"
-                self.turn_start_time = pygame.time.get_ticks()
-        
-        elif message.get('type') == 'shot_result':
-            result = message.get('result')
-            row, col = message.get('row'), message.get('col')
-            logging.info(f"Résultat du tir: {result} à ({row}, {col})")
-            
-            # Mettre à jour notre grille de tirs
-            if result == "hit":
-                self.opponent.grid.shots[row][col] = 'X'
-                self.show_message("TOUCHÉ!", (255, 165, 0))
-            elif result == "miss":
-                self.opponent.grid.shots[row][col] = 'O'
-                self.show_message("MANQUÉ!", (135, 206, 250))
-            elif result == "sunk":
-                self.opponent.grid.shots[row][col] = 'X'
-                self.show_message("COULÉ!", (255, 50, 50))
-            
-            # Passer le tour à l'adversaire si le jeu n'est pas terminé
-            if self.game_state != "game_over":
-                self.current_player = "opponent"
-                self.turn_start_time = pygame.time.get_ticks()
-        
-        elif message.get('type') == 'game_over':
-            winner = message.get('winner')
-            logging.info(f"Message de fin de partie reçu: {winner}")
-            
-            self.game_state = "game_over"
-            self.winner = winner
-    
-    def _send_shot(self, row, col):
-        """Envoie un message de tir à l'adversaire"""
-        if not self.is_online or not self.network_client:
-            return
-        
-        message = {
-            'type': 'shot',
-            'row': row,
-            'col': col
-        }
-        
-        self.network_client.send_message(message)
-        logging.info(f"Message de tir envoyé: ({row}, {col})")
-    
-    def _send_shot_result(self, result, row, col):
-        """Envoie le résultat d'un tir à l'adversaire"""
-        if not self.is_online or not self.network_client:
-            return
-        
-        message = {
-            'type': 'shot_result',
-            'result': result,
-            'row': row,
-            'col': col
-        }
-        
-        self.network_client.send_message(message)
-        logging.info(f"Résultat de tir envoyé: {result} à ({row}, {col})")
-    
-    def _send_game_over(self, winner):
-        """Envoie un message de fin de partie à l'adversaire"""
-        if not self.is_online or not self.network_client:
-            return
-        
-        message = {
-            'type': 'game_over',
-            'winner': winner
-        }
-        
-        self.network_client.send_message(message)
-        logging.info(f"Message de fin de partie envoyé, gagnant: {winner}")
-    
     def start_game(self):
         """Démarre la partie après le placement des navires"""
         logging.info("Démarrage de la partie après placement des navires")
@@ -217,6 +109,11 @@ class GameManager:
         # Déterminer aléatoirement qui commence en mode solo
         if not self.is_online:
             self.current_player = random.choice(["player", "opponent"])
+        else:
+            # En mode en ligne, on conserve la détermination faite dans start_online_game
+            # Envoyer un message de début de jeu pour s'assurer que les deux clients sont synchronisés
+            if hasattr(self.network_client, 'is_host') and self.network_client.is_host:
+                self._send_game_start()
         
         self.game_state = "playing"
         self.turn_start_time = pygame.time.get_ticks()
@@ -272,18 +169,75 @@ class GameManager:
             if self.opponent.grid.shots[row][col] != ' ':
                 return False, "already_shot"
             
+            # Marquer le tir localement avant d'envoyer
+            self.opponent.grid.shots[row][col] = '?'  # Marquage temporaire
+
+            # Créer le message de tir
+            shot_message = {
+                'type': 'shot',
+                'row': row,
+                'col': col
+            }
+            
             # Envoyer le tir à l'adversaire
-            self._send_shot(row, col)
-            
-            # Marquage temporaire en attendant le résultat
-            self.opponent.grid.shots[row][col] = '?'
-            
-            # Passons le tour à l'adversaire
-            self.current_player = "opponent"
-            
-            return True, "wait_response"
+            if self.network_client:
+                sent_successfully = False
+                
+                # Essayer différentes méthodes d'envoi possibles
+                if hasattr(self.network_client, 'send_message'):
+                    try:
+                        self.network_client.send_message(shot_message)
+                        sent_successfully = True
+                    except Exception as e:
+                        logging.error(f"Erreur lors de l'envoi avec send_message: {e}")
+                    
+                # Si la méthode précédente n'existe pas ou a échoué, essayer send
+                if not sent_successfully and hasattr(self.network_client, 'send'):
+                    try:
+                        self.network_client.send(shot_message)
+                        sent_successfully = True
+                    except Exception as e:
+                        logging.error(f"Erreur lors de l'envoi avec send: {e}")
+                
+                # Si nous avons un attribut send_move, essayons-le
+                if not sent_successfully and hasattr(self.network_client, 'send_move'):
+                    try:
+                        self.network_client.send_move((row, col))
+                        sent_successfully = True
+                    except Exception as e:
+                        logging.error(f"Erreur lors de l'envoi avec send_move: {e}")
+                
+                if sent_successfully:
+                    logging.info(f"Tir envoyé en ({row}, {col})")
+                    
+                    # Marquer que ce n'est plus notre tour de façon très claire
+                    self.current_player = "opponent"
+                    if hasattr(self.network_client, 'my_turn'):
+                        self.network_client.my_turn = False
+                        logging.info("Tour passé à l'adversaire")
+                    
+                    # Mettre à jour la barre de temps
+                    self.turn_start_time = pygame.time.get_ticks()
+                    
+                    # Envoyer explicitement un message de changement de tour
+                    self._send_turn_change()
+                    
+                    # Afficher un message pour indiquer qu'on a tiré
+                    self.show_message("Tir effectué, attente du résultat...", (200, 200, 200))
+                    
+                    return True, "wait_response"
+                else:
+                    logging.error("Aucune méthode d'envoi de message fonctionnelle trouvée")
+                    # Annuler le marquage temporaire
+                    self.opponent.grid.shots[row][col] = ' '
+                    return False, "network_error"
+            else:
+                logging.error("Erreur: Client réseau non disponible")
+                # Annuler le marquage temporaire
+                self.opponent.grid.shots[row][col] = ' '
+                return False, "network_error"
         
-        # Mode solo
+        # Mode solo (code existant)
         result = self.player.make_shot(self.opponent.grid, row, col)
         
         if result == "already_shot" or result == "invalid":
@@ -351,6 +305,311 @@ class GameManager:
         
         return True, result
     
+    def _handle_network_message(self, message):
+        """Gère les messages réseau reçus"""
+        logging.info(f"Message réseau reçu: {message}")
+        self.last_network_message = message
+        
+        # S'il s'agit d'un message "move" (format utilisé par battleship_connection.py)
+        if isinstance(message, dict) and "move" in message:
+            # Convertir au format attendu par notre logique
+            row, col = message["move"]
+            message = {
+                'type': 'shot',
+                'row': row,
+                'col': col
+            }
+            logging.info(f"Message converti de format 'move' à format 'shot': {message}")
+        
+        # Traiter différents types de messages
+        if isinstance(message, dict):
+            message_type = message.get('type', '')
+            
+            if message_type == 'shot':
+                row, col = message.get('row'), message.get('col')
+                logging.info(f"Tir reçu de l'adversaire: ({row}, {col})")
+                
+                # Appliquer le tir sur notre grille
+                result = self.player.grid.receive_shot(row, col)
+                
+                # Envoyer le résultat du tir
+                self._send_shot_result(result, row, col)
+                
+                # Afficher le message approprié
+                if result == "hit":
+                    self.show_message("TOUCHÉ!", (255, 165, 0))
+                elif result == "miss":
+                    self.show_message("MANQUÉ!", (135, 206, 250))
+                elif result == "sunk":
+                    self.show_message("COULÉ!", (255, 50, 50))
+                
+                # Vérifier si le jeu est terminé
+                if self.player.grid.are_all_ships_sunk():
+                    logging.info("Partie terminée - Adversaire gagnant")
+                    self.game_state = "game_over"
+                    self.winner = "opponent"
+                    
+                    # Informer l'adversaire de la victoire
+                    self._send_game_over("opponent")
+                else:
+                    # Passer le tour au joueur et envoyer une confirmation explicite
+                    self.current_player = "player"
+                    if self.network_client:
+                        self.network_client.my_turn = True
+                        logging.info("Mon tour activé suite à un tir adversaire")
+                    self.turn_start_time = pygame.time.get_ticks()
+                    # Pas besoin d'envoyer de confirmation, le résultat du tir sert de confirmation
+            
+            elif message_type == 'shot_result':
+                result = message.get('result')
+                row, col = message.get('row'), message.get('col')
+                logging.info(f"Résultat du tir: {result} à ({row}, {col})")
+                
+                # Mettre à jour notre grille de tirs
+                if result == "hit":
+                    self.opponent.grid.shots[row][col] = 'X'
+                    self.show_message("TOUCHÉ!", (255, 165, 0))
+                elif result == "miss":
+                    self.opponent.grid.shots[row][col] = 'O'
+                    self.show_message("MANQUÉ!", (135, 206, 250))
+                elif result == "sunk":
+                    self.opponent.grid.shots[row][col] = 'X'
+                    self.show_message("COULÉ!", (255, 50, 50))
+                    
+                    # Vérifier si tous les navires sont coulés
+                    # Notez que cela suppose une logique côté serveur pour suivre les navires coulés
+                    if message.get('all_sunk', False):
+                        logging.info("Tous les navires adverses coulés - Victoire du joueur")
+                        self.game_state = "game_over"
+                        self.winner = "player"
+                        return
+                
+                # Après un résultat de tir, c'est toujours le tour de l'adversaire
+                # Ne pas changer l'état du tour ici, cela sera géré par turn_change
+            
+            elif message_type == 'turn_change':
+                next_player = message.get('next_player')
+                logging.info(f"Message de changement de tour reçu, prochain joueur: {next_player}")
+                
+                # Mettre à jour le tour en fonction du message
+                if next_player == 'player':
+                    self.current_player = "player"
+                    if self.network_client:
+                        self.network_client.my_turn = True
+                    logging.info("C'est maintenant mon tour (message explicite)")
+                elif next_player == 'opponent':
+                    self.current_player = "opponent"
+                    if self.network_client:
+                        self.network_client.my_turn = False
+                    logging.info("C'est maintenant le tour de l'adversaire (message explicite)")
+            
+            elif message_type == 'game_start':
+                logging.info("Message de début de partie reçu")
+                # Le client (non-hôte) reçoit ce message et confirme que c'est à l'hôte de commencer
+                if not (hasattr(self.network_client, 'is_host') and self.network_client.is_host):
+                    self.current_player = "opponent"
+                    if self.network_client:
+                        self.network_client.my_turn = False
+                    logging.info("Tour initial: c'est l'hôte qui commence")
+            
+            elif message_type == 'game_over':
+                winner = message.get('winner')
+                logging.info(f"Message de fin de partie reçu: {winner}")
+                
+                self.game_state = "game_over"
+                self.winner = winner
+                
+                # S'assurer que le client sait que la partie est terminée
+                if self.network_client:
+                    self.network_client.is_match_active = False
+        else:
+            logging.warning(f"Message reçu dans un format inconnu: {message}")
+    
+    def _send_shot(self, row, col):
+        """Envoie un message de tir à l'adversaire"""
+        if not self.is_online or not self.network_client:
+            return False
+        
+        message = {
+            'type': 'shot',
+            'row': row,
+            'col': col
+        }
+        
+        sent_successfully = False
+        
+        # Essayer différentes méthodes d'envoi possibles
+        if hasattr(self.network_client, 'send_message'):
+            try:
+                self.network_client.send_message(message)
+                sent_successfully = True
+            except Exception as e:
+                logging.error(f"Erreur lors de l'envoi avec send_message: {e}")
+        
+        if not sent_successfully and hasattr(self.network_client, 'send'):
+            try:
+                self.network_client.send(message)
+                sent_successfully = True
+            except Exception as e:
+                logging.error(f"Erreur lors de l'envoi avec send: {e}")
+        
+        if not sent_successfully and hasattr(self.network_client, 'send_move'):
+            try:
+                self.network_client.send_move((row, col))
+                sent_successfully = True
+            except Exception as e:
+                logging.error(f"Erreur lors de l'envoi avec send_move: {e}")
+        
+        if sent_successfully:
+            logging.info(f"Message de tir envoyé: ({row}, {col})")
+            return True
+        else:
+            logging.error("Aucune méthode d'envoi de message fonctionnelle trouvée")
+            return False
+    
+    def _send_shot_result(self, result, row, col):
+        """Envoie le résultat d'un tir à l'adversaire"""
+        if not self.is_online or not self.network_client:
+            return False
+        
+        message = {
+            'type': 'shot_result',
+            'result': result,
+            'row': row,
+            'col': col,
+            'your_turn': True  # Indique explicitement que c'est maintenant le tour de l'adversaire
+        }
+        
+        sent_successfully = False
+        
+        # Essayer différentes méthodes d'envoi possibles
+        if hasattr(self.network_client, 'send_message'):
+            try:
+                self.network_client.send_message(message)
+                sent_successfully = True
+            except Exception as e:
+                logging.error(f"Erreur lors de l'envoi avec send_message: {e}")
+        
+        if not sent_successfully and hasattr(self.network_client, 'send'):
+            try:
+                self.network_client.send(message)
+                sent_successfully = True
+            except Exception as e:
+                logging.error(f"Erreur lors de l'envoi avec send: {e}")
+        
+        if sent_successfully:
+            logging.info(f"Résultat de tir envoyé: {result} à ({row}, {col})")
+            
+            # Après avoir envoyé le résultat, passer explicitement le tour au joueur adverse
+            self._send_turn_change(next_player='player')
+            
+            return True
+        else:
+            logging.error("Aucune méthode d'envoi de message fonctionnelle trouvée")
+            return False
+    
+    def _send_turn_change(self, next_player='opponent'):
+        """Envoie un message pour signaler le changement de tour"""
+        if not self.is_online or not self.network_client:
+            return False
+        
+        message = {
+            'type': 'turn_change',
+            'next_player': next_player  # 'player' ou 'opponent'
+        }
+        
+        sent_successfully = False
+        
+        # Essayer différentes méthodes d'envoi possibles
+        if hasattr(self.network_client, 'send_message'):
+            try:
+                self.network_client.send_message(message)
+                sent_successfully = True
+            except Exception as e:
+                logging.error(f"Erreur lors de l'envoi du changement de tour: {e}")
+        
+        if not sent_successfully and hasattr(self.network_client, 'send'):
+            try:
+                self.network_client.send(message)
+                sent_successfully = True
+            except Exception as e:
+                logging.error(f"Erreur lors de l'envoi du changement de tour: {e}")
+        
+        if sent_successfully:
+            logging.info(f"Message de changement de tour envoyé, prochain joueur: {next_player}")
+            return True
+        else:
+            logging.error("Échec de l'envoi du message de changement de tour")
+            return False
+    
+    def _send_game_start(self):
+        """Envoie un message pour signaler le début de la partie"""
+        if not self.is_online or not self.network_client:
+            return False
+        
+        message = {
+            'type': 'game_start',
+            'host_starts': True
+        }
+        
+        sent_successfully = False
+        
+        # Essayer différentes méthodes d'envoi possibles
+        if hasattr(self.network_client, 'send_message'):
+            try:
+                self.network_client.send_message(message)
+                sent_successfully = True
+            except Exception as e:
+                logging.error(f"Erreur lors de l'envoi du message de début de partie: {e}")
+        
+        if not sent_successfully and hasattr(self.network_client, 'send'):
+            try:
+                self.network_client.send(message)
+                sent_successfully = True
+            except Exception as e:
+                logging.error(f"Erreur lors de l'envoi du message de début de partie: {e}")
+        
+        if sent_successfully:
+            logging.info("Message de début de partie envoyé")
+            return True
+        else:
+            logging.error("Échec de l'envoi du message de début de partie")
+            return False
+    
+    def _send_game_over(self, winner):
+        """Envoie un message de fin de partie à l'adversaire"""
+        if not self.is_online or not self.network_client:
+            return False
+        
+        message = {
+            'type': 'game_over',
+            'winner': winner
+        }
+        
+        sent_successfully = False
+        
+        # Essayer différentes méthodes d'envoi possibles
+        if hasattr(self.network_client, 'send_message'):
+            try:
+                self.network_client.send_message(message)
+                sent_successfully = True
+            except Exception as e:
+                logging.error(f"Erreur lors de l'envoi avec send_message: {e}")
+        
+        if not sent_successfully and hasattr(self.network_client, 'send'):
+            try:
+                self.network_client.send(message)
+                sent_successfully = True
+            except Exception as e:
+                logging.error(f"Erreur lors de l'envoi avec send: {e}")
+        
+        if sent_successfully:
+            logging.info(f"Message de fin de partie envoyé, gagnant: {winner}")
+            return True
+        else:
+            logging.error("Aucune méthode d'envoi de message fonctionnelle trouvée")
+            return False
+    
     def check_turn_timeout(self):
         """Vérifie si le temps du tour actuel est écoulé"""
         if self.game_state != "playing":
@@ -378,8 +637,12 @@ class GameManager:
                 elif self.is_online:
                     # En mode réseau, on passe simplement au tour du joueur après timeout
                     self.current_player = "player"
+                    if hasattr(self.network_client, 'my_turn'):
+                        self.network_client.my_turn = True
                     self.turn_start_time = pygame.time.get_ticks()
                     self.show_message("Tour passé - Temps écoulé", (255, 100, 100))
+                    # Informer l'adversaire du changement de tour
+                    self._send_turn_change(next_player='player')
             
             return True
         
@@ -432,3 +695,14 @@ class GameManager:
         """Vérifie si un message est actuellement affiché"""
         current_time = pygame.time.get_ticks()
         return current_time - self.message_start_time < MESSAGE_DURATION
+    
+    def cleanup_network(self):
+        """Nettoie les ressources réseau"""
+        logging.info("Nettoyage des ressources réseau")
+        if self.network_client:
+            try:
+                self.network_client.disconnect()
+                logging.info("Client réseau déconnecté")
+            except Exception as e:
+                logging.error(f"Erreur lors de la déconnexion réseau: {e}")
+            self.network_client = None

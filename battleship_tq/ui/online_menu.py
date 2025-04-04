@@ -11,6 +11,7 @@ from game.constants import (
 )
 from ui.ui_elements import Button, TextBox, ProgressBar
 from network.battleship_connection import BattleshipConnection
+from game.player import Player  # Assurez-vous d'importer Player
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -227,10 +228,31 @@ class OnlineMenu:
         # Vérifier si la connexion est établie
         if self.network_client and self.network_client.is_match_active:
             # Si un match est actif, passer à l'écran de placement des navires
+            # Sauvegarde du client réseau dans le game_manager pour qu'il soit accessible ailleurs
             self.game_manager.network_client = self.network_client
-            self.game_manager.opponent = self.network_client.opponent
-            self.game_manager.is_match_active = True
-            self.game_manager.start_online_game(self.network_client.opponent)
+            
+            # CORRECTION: Utiliser start_solo_game avec les paramètres supplémentaires pour l'adapter à une partie en ligne
+            # Au lieu d'utiliser une méthode start_online_game qui n'existe pas
+            self.game_manager.is_online = True
+            self.game_manager.opponent = Player(self.network_client.opponent)
+            if hasattr(self.game_manager, 'start_online_game'):
+                # Si la méthode start_online_game existe, utiliser celle-ci
+                self.game_manager.start_online_game(self.network_client.opponent)
+            else:
+                # Sinon, utiliser start_solo_game et configurer manuellement pour le mode en ligne
+                self.game_manager.start_solo_game(self.game_manager.difficulty)
+                self.game_manager.is_online = True
+                
+                # Configurer le client réseau si ce n'est pas déjà fait
+                if self.game_manager.network_client:
+                    # Définir le callback pour les messages réseau si la méthode existe
+                    if hasattr(self.game_manager.network_client, 'set_message_callback') and hasattr(self.game_manager, '_handle_network_message'):
+                        self.game_manager.network_client.set_message_callback(self.game_manager._handle_network_message)
+                    
+                    # Déterminer qui commence en fonction du rôle de l'hôte
+                    if hasattr(self.game_manager.network_client, 'my_turn'):
+                        self.game_manager.current_player = "player" if self.game_manager.network_client.my_turn else "opponent"
+                
             return PLACEMENT_NAVIRES
             
         # Gérer les clics de souris

@@ -4,7 +4,7 @@ import math
 import time
 from game.constants import (
     SCREEN_WIDTH, SCREEN_HEIGHT, WHITE, GRID_BLUE, DARK_BLUE, RED, GREEN,
-    MENU_PRINCIPAL, PLACEMENT_NAVIRES
+    MENU_PRINCIPAL, PLACEMENT_NAVIRES, FIN_PARTIE
 )
 from ui.ui_elements import Button, TextBox
 
@@ -152,10 +152,31 @@ class GameOverScreen:
     def handle_event(self, event):
         """Gère les événements de l'écran de fin de partie"""
         if self.button_play_again.check_click():
+            # Si on était en mode online, déconnexion propre
+            if self.game_manager.is_online and self.game_manager.network_client:
+                try:
+                    self.game_manager.network_client.disconnect()
+                except Exception as e:
+                    print(f"Erreur lors de la déconnexion: {e}")
+                
+            # Commencer une nouvelle partie (solo si on vient d'une partie online)
             self.game_manager.start_solo_game(self.game_manager.difficulty)
             return PLACEMENT_NAVIRES
-        
+    
         if self.button_main_menu.check_click():
-            return MENU_PRINCIPAL
+            # Si on était en mode online, déconnexion propre
+            if self.game_manager.is_online and self.game_manager.network_client:
+                try:
+                    self.game_manager.network_client.disconnect()
+                    self.game_manager.network_client = None  # Libérer la référence
+                    self.game_manager.is_online = False  # Réinitialiser l'état online
+                except Exception as e:
+                    print(f"Erreur lors de la déconnexion: {e}")
+                
+            # Réinitialiser certains états du jeu pour éviter des problèmes
+            self.game_manager.winner = None
+            self.game_manager.game_state = "waiting"
         
-        return "fin_partie"
+            return MENU_PRINCIPAL
+    
+        return FIN_PARTIE
