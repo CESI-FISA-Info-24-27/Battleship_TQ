@@ -1,12 +1,13 @@
 import pygame
 import sys
 import os
-from src.utils.constants import SCREEN_WIDTH, SCREEN_HEIGHT, TITLE, FPS, BLACK, WHITE
+from src.utils.constants import SCREEN_WIDTH, SCREEN_HEIGHT, TITLE, FPS, BLACK, WHITE, GRAY
 from src.ui.screens.main_screen import MainScreen
 from src.ui.screens.game_screen import GameScreen
 from src.ui.screens.ship_placement import ShipPlacement
 from src.ui.screens.connection_screen import ConnectionScreen
 from src.ui.screens.host_screen import HostScreen
+from src.ui.screens.loading_screen import LoadingScreen
 
 
 class Game:
@@ -35,15 +36,21 @@ class Game:
         # Initialize clock to limit FPS
         self.clock = pygame.time.Clock()
         self.running = True
+        
+        # Create asset folders if they don't exist
+        self._ensure_assets_folders()
+        
+        # Afficher l'écran de chargement avant d'initialiser le reste
+        loading = LoadingScreen(self)
+        loading.run()
+        
+        # Initialiser le reste du jeu après l'écran de chargement
         self.current_screen = "main_screen"  # Starting screen
         
         # Initialize network settings
         self.network_mode = None  # "host", "client", or "local"
         self.client = None
         self.server = None
-        
-        # Create asset folders if they don't exist
-        self._ensure_assets_folders()
         
         # Initialize screens
         self.screens = {
