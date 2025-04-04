@@ -87,8 +87,9 @@ class GameState:
             # Mettre à jour l'état des navires coulés pour l'IA
             sunk_ships = []
             if self.ai and sunk:
+                # Chercher tous les navires coulés
                 for ship in opponent.board.ships:
-                    if ship.hits >= ship.size:
+                    if ship.is_sunk():
                         sunk_ships.append(ship.size)
                 self.ai.update_ship_status(sunk_ships)
             

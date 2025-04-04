@@ -1,4 +1,5 @@
 import pygame
+import os
 from ...utils.constants import (
     SCREEN_WIDTH, SCREEN_HEIGHT, GRID_SIZE, CELL_SIZE, 
     WHITE, BLACK, BLUE, RED, GREEN, GRAY,
@@ -16,6 +17,7 @@ class GameScreen:
         # Fonts
         self.title_font = pygame.font.Font(None, 36)
         self.info_font = pygame.font.Font(None, 24)
+        self.popup_font = pygame.font.Font(None, 48)  # Police plus grande pour le popup
         
         # Title
         self.title_text = self.title_font.render("Bataille Navale", True, WHITE)
@@ -85,10 +87,334 @@ class GameScreen:
         self.animation_coords = None
         self.animation_hit = False
         
+        # Popup pour "Touché" ou "Manqué"
+        self.popup_timer = 0
+        self.popup_text = ""
+        self.popup_color = WHITE
+        self.popup_position = (0, 0)
+        self.popup_scale = 1.0
+        
+        # Charger les sons
+        self.sounds = {}
+        self._load_sounds()
+        
         # Game state reference
         self.game_state = None
         self.game_state_initialized = False
         
+    def _load_sounds(self):
+        """Charge les effets sonores"""
+        # Vérifier si pygame.mixer est initialisé
+        if not pygame.mixer.get_init():
+            try:
+                pygame.mixer.init()
+            except:
+                print("Impossible d'initialiser le mixer audio")
+                return
+        
+        # Chemin vers les fichiers sons
+        sound_dir = os.path.join("assets", "sounds")
+        
+        # Créer le dossier s'il n'existe pas
+        if not os.path.exists(sound_dir):
+            try:
+                os.makedirs(sound_dir)
+            except:
+                print(f"Impossible de créer le dossier: {sound_dir}")
+        
+        # Tenter de charger les sons
+        try:
+            hit_path = os.path.join(sound_dir, "hit.wav")
+            miss_path = os.path.join(sound_dir, "miss.wav")
+            sink_path = os.path.join(sound_dir, "sink.wav")
+            
+            # Si les fichiers n'existent pas, nous ne pouvons pas les charger
+            # Mais nous ne voulons pas que le jeu plante
+            if os.path.exists(hit_path):
+                self.sounds["hit"] = pygame.mixer.Sound(hit_path)
+            if os.path.exists(miss_path):
+                self.sounds["miss"] = pygame.mixer.Sound(miss_path)
+            if os.path.exists(sink_path):
+                self.sounds["sink"] = pygame.mixer.Sound(sink_path)
+                
+            # Si nous n'avons pas les fichiers, afficher un avertissement
+            if not self.sounds:
+                print("Aucun fichier son trouvé. Créez des fichiers .wav dans le dossier assets/sounds/")
+        except Exception as e:
+            print(f"Erreur lors du chargement des sons: {e}")
+    
+    def _play_shot_sound(self, hit, sunk=False):
+        """Joue le son approprié pour un tir"""
+        if not self.sounds:
+            return
+            
+        # Choisir le son approprié
+        sound_key = "sink" if sunk and "sink" in self.sounds else "hit" if hit and "hit" in self.sounds else "miss" if "miss" in self.sounds else None
+        
+        if sound_key and sound_key in self.sounds:
+            try:
+                self.sounds[sound_key].play()
+            except:
+                print(f"Impossible de jouer le son: {sound_key}")
+    
+    def show_hit_popup(self, hit, sunk=False):
+        """Affiche un popup indiquant si le tir a touché ou manqué"""
+        # Définir le texte et la couleur
+        if sunk:
+            self.popup_text = "COULÉ !"
+            self.popup_color = RED
+        elif hit:
+            self.popup_text = "TOUCHÉ !"
+            self.popup_color = RED
+        else:
+            self.popup_text = "MANQUÉ !"
+            self.popup_color = BLUE
+        
+        # Position du popup (au centre de l'écran)
+        self.popup_position = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 50)
+        
+        # Démarrer le timer (60 frames = 1 seconde à 60 FPS)
+        self.popup_timer = 60
+        self.popup_scale = 0.1  # Commencer petit pour une animation d'agrandissement
+    
+    def _draw_hit_popup(self, screen):
+        """Dessine le popup de touché/manqué"""
+        if self.popup_timer <= 0:
+            return
+        
+        # Animation d'échelle
+        if self.popup_timer > 45:
+            # 0.1 à 1.5 en 15 frames (grossissement)
+            self.popup_scale = 0.1 + (60 - self.popup_timer) * 0.093
+        elif self.popup_timer < 15:
+            # Diminution sur les 15 dernières frames
+            self.popup_scale = max(0.1, self.popup_timer / 15)
+        else:
+            # Taille normale pour le reste du temps
+            self.popup_scale = 1.5
+        
+        # Calculer l'opacité (la dernière moitié du temps, le texte devient de plus en plus transparent)
+        alpha = min(255, int(self.popup_timer / 60 * 255 * 2))
+        
+        # Créer la surface de texte
+        text_surface = self.popup_font.render(self.popup_text, True, self.popup_color)
+        
+        # Appliquer l'échelle
+        scaled_width = int(text_surface.get_width() * self.popup_scale)
+        scaled_height = int(text_surface.get_height() * self.popup_scale)
+        scaled_surface = pygame.transform.scale(text_surface, (scaled_width, scaled_height))
+        
+        # Appliquer l'opacité
+        if alpha < 255:
+            # Créer une surface temporaire avec canal alpha
+            temp_surface = pygame.Surface(scaled_surface.get_size(), pygame.SRCALPHA)
+            temp_surface.fill((255, 255, 255, alpha))
+            scaled_surface.blit(temp_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        
+        # Positionner et dessiner
+        text_rect = scaled_surface.get_rect(center=self.popup_position)
+        screen.blit(scaled_surface, text_rect)
+        
+    def handle_event(self, event):
+        """Handle input events"""
+        # Initialize game state if needed
+        if not self.game_state_initialized:
+            self._init_game_state()
+            
+        # Handle button events
+        for button in self.buttons:
+            button.handle_event(event)
+            
+        # In player's turn, handle clicks on opponent grid
+        if self._is_player_turn():
+            # Only allow clicks on opponent grid
+            cell = self.opponent_grid.handle_event(event)
+            if cell:
+                self._fire_shot(*cell)
+                
+    def update(self):
+        """Update screen state"""
+        # Initialize game state if needed
+        if not self.game_state_initialized:
+            self._init_game_state()
+            
+        for button in self.buttons:
+            button.update()
+            
+        # Update status text based on game state
+        self._update_status_text()
+        
+        # Gérer le tour du bot en mode solo
+        if (self.game.network_mode == "solo" and self.game_state and 
+            self.game_state.state == OPPONENT_TURN and 
+            self.animation_timer <= 0):
+            
+            # Faire jouer le bot
+            try:
+                bot_result = self.game_state.bot_play()
+                
+                if bot_result:
+                    # Configurer l'animation pour le tir du bot
+                    x, y, hit, ship_id, sunk = bot_result
+                    # Stocker les coordonnées exactes pour l'animation
+                    self.animation_coords = (x, y)
+                    self.animation_hit = hit
+                    self.animation_timer = 30  # frames
+                    
+                    # Afficher le popup
+                    self.show_hit_popup(hit, sunk)
+                    
+                    # Jouer le son approprié
+                    self._play_shot_sound(hit, sunk)
+            except Exception as e:
+                print(f"Erreur pendant le tour du bot: {e}")
+                import traceback
+                traceback.print_exc()
+                
+        # Update animations
+        if self.animation_timer > 0:
+            self.animation_timer -= 1
+            
+        # Update le timer du popup
+        if self.popup_timer > 0:
+            self.popup_timer -= 1
+            
+    def _draw_shot_animation(self, screen):
+        """Draw animation for a shot"""
+        grid_x, grid_y = self.animation_coords
+        
+        # Determine which grid to draw on
+        if self._is_player_turn():
+            # Player's shot on opponent grid
+            x = self.opponent_grid.x + CELL_SIZE * (grid_x + 1) + CELL_SIZE // 2
+            y = self.opponent_grid.y + CELL_SIZE * (grid_y + 1) + CELL_SIZE // 2
+        else:
+            # Opponent's shot on player grid
+            x = self.player_grid.x + CELL_SIZE * (grid_x + 1) + CELL_SIZE // 2
+            y = self.player_grid.y + CELL_SIZE * (grid_y + 1) + CELL_SIZE // 2
+            
+        # Animation size depends on timer
+        max_size = CELL_SIZE * 0.8
+        size = max_size * (1 - self.animation_timer / 30)
+        
+        # Draw circle for the shot
+        color = RED if self.animation_hit else BLUE
+        pygame.draw.circle(screen, color, (int(x), int(y)), int(size))
+        
+    def _fire_shot(self, x, y):
+        """Fire a shot at the given coordinates on the opponent's grid"""
+        if not self._is_player_turn():
+            return
+            
+        # Local or solo game
+        if self.game.network_mode in ["local", "solo"]:
+            # Check if the shot is valid
+            player_id = self.game_state.current_player_index
+            result = self.game_state.process_shot(player_id, x, y)
+            if result:
+                # Set animation
+                self.animation_coords = (x, y)
+                self.animation_hit = self.game_state.last_shot[2]  # hit status
+                self.animation_timer = 30  # frames
+                
+                # Show popup
+                self.show_hit_popup(self.game_state.last_shot[2], self.game_state.last_shot[4])
+                
+                # Play sound
+                self._play_shot_sound(self.game_state.last_shot[2], self.game_state.last_shot[4])
+        
+        # Network game
+        elif self.game.client:
+            self.game.client.fire_shot(x, y)
+            # Animation will be triggered when we get the game state update
+            
+    def render(self, screen):
+        """Render the game screen"""
+        # Initialize game state if needed
+        if not self.game_state_initialized:
+            self._init_game_state()
+            
+        # Background
+        screen.fill(BLACK)
+        
+        # Title
+        screen.blit(self.title_text, self.title_rect)
+        
+        # Grid labels
+        screen.blit(self.player_label, self.player_label_rect)
+        screen.blit(self.opponent_label, self.opponent_label_rect)
+        
+        # Only render if we have a game state
+        if hasattr(self, 'game_state') and self.game_state:
+            # Get player ID and boards
+            player_id = self._get_player_id()
+            player_board = self.game_state.players[player_id].board
+            opponent_board = self.game_state.players[1 - player_id].board
+            
+            # Draw player grid (show ships)
+            self.player_grid.draw(screen, player_board, show_ships=True)
+            
+            # Draw opponent grid (hide ships)
+            self.opponent_grid.draw(screen, opponent_board, show_ships=False)
+            
+            # Draw shot animations
+            if self.animation_timer > 0 and self.animation_coords:
+                self._draw_shot_animation(screen)
+                
+            # Draw hit popup
+            if self.popup_timer > 0:
+                self._draw_hit_popup(screen)
+                
+        # Status message
+        status_surface = self.info_font.render(self.status_text, True, self.status_color)
+        status_rect = status_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 70))
+        screen.blit(status_surface, status_rect)
+        
+        # Render buttons
+        for button in self.buttons:
+            button.draw(screen)
+            
+    def _update_status_text(self):
+        """Update the status text based on the current game state"""
+        if not hasattr(self, 'game_state') or not self.game_state:
+            if self.game.network_mode == "solo":
+                self.status_text = "Mode Solo - En attente de l'initialisation..."
+                self.status_color = BLUE
+            else:
+                self.status_text = "En attente de la connexion..."
+                self.status_color = BLUE
+            return
+            
+        state = self.game_state.state
+        
+        if state == PLACING_SHIPS:
+            self.status_text = "En attente que les joueurs placent leurs navires..."
+            self.status_color = BLUE
+        elif state == WAITING_FOR_OPPONENT:
+            if self.game.network_mode == "solo":
+                self.status_text = "Prêt à jouer - À votre tour"
+                self.status_color = GREEN
+            else:
+                self.status_text = "En attente de l'adversaire..."
+                self.status_color = BLUE
+        elif state == YOUR_TURN:
+            self.status_text = "À votre tour - cliquez sur la grille adverse pour tirer"
+            self.status_color = GREEN
+        elif state == OPPONENT_TURN:
+            if self.game.network_mode == "solo":
+                self.status_text = "Tour de l'IA - L'ordinateur réfléchit..."
+                self.status_color = RED
+            else:
+                self.status_text = "Tour de l'adversaire - attendez votre tour"
+                self.status_color = RED
+        elif state == GAME_OVER:
+            if self.game_state.winner == self._get_player_id():
+                self.status_text = "Victoire! Tous les navires adverses ont été coulés!"
+                self.status_color = GREEN
+            else:
+                self.status_text = "Défaite! Tous vos navires ont été coulés!"
+                self.status_color = RED
+                
     def _init_game_state(self):
         """Initialize game state based on network mode"""
         if not self.game_state_initialized:
@@ -136,184 +462,6 @@ class GameScreen:
                 import traceback
                 traceback.print_exc()
                     
-    def handle_event(self, event):
-        """Handle input events"""
-        # Initialize game state if needed
-        if not self.game_state_initialized:
-            self._init_game_state()
-            
-        # Handle button events
-        for button in self.buttons:
-            button.handle_event(event)
-            
-        # In player's turn, handle clicks on opponent grid
-        if self._is_player_turn():
-            # Only allow clicks on opponent grid
-            cell = self.opponent_grid.handle_event(event)
-            if cell:
-                self._fire_shot(*cell)
-                
-    def update(self):
-        """Update screen state"""
-        # Initialize game state if needed
-        if not self.game_state_initialized:
-            self._init_game_state()
-            
-        for button in self.buttons:
-            button.update()
-            
-        # Update status text based on game state
-        self._update_status_text()
-        
-        # Gérer le tour du bot en mode solo
-        if (self.game.network_mode == "solo" and self.game_state and 
-            self.game_state.state == OPPONENT_TURN and 
-            self.animation_timer <= 0):
-            
-            # Faire jouer le bot
-            try:
-                bot_result = self.game_state.bot_play()
-                
-                if bot_result:
-                    # Configurer l'animation pour le tir du bot
-                    x, y, hit, _, _ = bot_result
-                    self.animation_coords = (x, y)
-                    self.animation_hit = hit
-                    self.animation_timer = 30  # frames
-            except Exception as e:
-                print(f"Erreur pendant le tour du bot: {e}")
-                import traceback
-                traceback.print_exc()
-                
-        # Update animations
-        if self.animation_timer > 0:
-            self.animation_timer -= 1
-            
-    def _update_status_text(self):
-        """Update the status text based on the current game state"""
-        if not hasattr(self, 'game_state') or not self.game_state:
-            if self.game.network_mode == "solo":
-                self.status_text = "Mode Solo - En attente de l'initialisation..."
-                self.status_color = BLUE
-            else:
-                self.status_text = "En attente de la connexion..."
-                self.status_color = BLUE
-            return
-            
-        state = self.game_state.state
-        
-        if state == PLACING_SHIPS:
-            self.status_text = "En attente que les joueurs placent leurs navires..."
-            self.status_color = BLUE
-        elif state == WAITING_FOR_OPPONENT:
-            if self.game.network_mode == "solo":
-                self.status_text = "Prêt à jouer - À votre tour"
-                self.status_color = GREEN
-            else:
-                self.status_text = "En attente de l'adversaire..."
-                self.status_color = BLUE
-        elif state == YOUR_TURN:
-            self.status_text = "À votre tour - cliquez sur la grille adverse pour tirer"
-            self.status_color = GREEN
-        elif state == OPPONENT_TURN:
-            if self.game.network_mode == "solo":
-                self.status_text = "Tour de l'IA - L'ordinateur réfléchit..."
-                self.status_color = RED
-            else:
-                self.status_text = "Tour de l'adversaire - attendez votre tour"
-                self.status_color = RED
-        elif state == GAME_OVER:
-            if self.game_state.winner == self._get_player_id():
-                self.status_text = "Victoire! Tous les navires adverses ont été coulés!"
-                self.status_color = GREEN
-            else:
-                self.status_text = "Défaite! Tous vos navires ont été coulés!"
-                self.status_color = RED
-                
-    def render(self, screen):
-        """Render the game screen"""
-        # Initialize game state if needed
-        if not self.game_state_initialized:
-            self._init_game_state()
-            
-        # Background
-        screen.fill(BLACK)
-        
-        # Title
-        screen.blit(self.title_text, self.title_rect)
-        
-        # Grid labels
-        screen.blit(self.player_label, self.player_label_rect)
-        screen.blit(self.opponent_label, self.opponent_label_rect)
-        
-        # Only render if we have a game state
-        if hasattr(self, 'game_state') and self.game_state:
-            # Get player ID and boards
-            player_id = self._get_player_id()
-            player_board = self.game_state.players[player_id].board
-            opponent_board = self.game_state.players[1 - player_id].board
-            
-            # Draw player grid (show ships)
-            self.player_grid.draw(screen, player_board, show_ships=True)
-            
-            # Draw opponent grid (hide ships)
-            self.opponent_grid.draw(screen, opponent_board, show_ships=False)
-            
-            # Draw shot animations
-            if self.animation_timer > 0 and self.animation_coords:
-                self._draw_shot_animation(screen)
-                
-        # Status message
-        status_surface = self.info_font.render(self.status_text, True, self.status_color)
-        status_rect = status_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 70))
-        screen.blit(status_surface, status_rect)
-        
-        # Render buttons
-        for button in self.buttons:
-            button.draw(screen)
-            
-    def _draw_shot_animation(self, screen):
-        """Draw animation for a shot"""
-        grid_x, grid_y = self.animation_coords
-        
-        # Determine which grid to draw on
-        if self._is_player_turn():
-            # Player's shot on opponent grid
-            x = self.opponent_grid.x + CELL_SIZE * (grid_x + 1) + CELL_SIZE // 2
-            y = self.opponent_grid.y + CELL_SIZE * (grid_y + 1) + CELL_SIZE // 2
-        else:
-            # Opponent's shot on player grid
-            x = self.player_grid.x + CELL_SIZE * (grid_x + 1) + CELL_SIZE // 2
-            y = self.player_grid.y + CELL_SIZE * (grid_y + 1) + CELL_SIZE // 2
-            
-        # Animation size depends on timer
-        max_size = CELL_SIZE * 0.8
-        size = max_size * (1 - self.animation_timer / 30)
-        
-        # Draw circle for the shot
-        color = RED if self.animation_hit else BLUE
-        pygame.draw.circle(screen, color, (x, y), size)
-        
-    def _fire_shot(self, x, y):
-        """Fire a shot at the given coordinates on the opponent's grid"""
-        if not self._is_player_turn():
-            return
-            
-        # Local or solo game
-        if self.game.network_mode in ["local", "solo"]:
-            # Check if the shot is valid
-            player_id = self.game_state.current_player_index
-            if self.game_state.process_shot(player_id, x, y):
-                # Set animation
-                self.animation_coords = (x, y)
-                self.animation_hit = self.game_state.last_shot[2]  # hit status
-                self.animation_timer = 30  # frames
-        
-        # Network game
-        elif self.game.client:
-            self.game.client.fire_shot(x, y)
-            # Animation will be triggered when we get the game state update
-            
     def _is_player_turn(self):
         """Check if it's the player's turn"""
         if not hasattr(self, 'game_state') or not self.game_state:
@@ -376,8 +524,6 @@ class GameScreen:
             import traceback
             traceback.print_exc()
             
-    # Correction pour la méthode _return_to_menu dans src/ui/screens/game_screen.py
-
     def _return_to_menu(self):
         """Return to the main menu"""
         try:
@@ -397,10 +543,10 @@ class GameScreen:
                     
             # Go back to main menu
             print("Retour au menu principal")
-            self.game.change_screen("main_screen")  # Corriger "main_menu" en "main_screen"
+            self.game.change_screen("main_screen")
         except Exception as e:
             print(f"Erreur lors du retour au menu: {e}")
             import traceback
             traceback.print_exc()
-
- 
+            # En cas d'erreur, essayer quand même de revenir au menu principal
+            self.game.change_screen("main_screen")

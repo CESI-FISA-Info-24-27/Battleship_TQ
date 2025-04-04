@@ -438,6 +438,14 @@ class ShipPlacement:
         elif self.game.network_mode == "solo":
             try:
                 if hasattr(self, 'game_state'):
+                    # S'assurer que le mode solo est activé
+                    self.game_state.is_solo_mode = True
+                    
+                    # Enregistrer le placement des navires du joueur
+                    for i, ship in enumerate(self.player.ships):
+                        if ship.is_placed():
+                            self.game_state.players[0].place_ship(i, ship.x, ship.y, ship.horizontal)
+                            
                     self.game_state.player_ready(0)
                     print("Placement des navires de l'IA...")
                     if self.game_state.players[1].auto_place_ships():
@@ -455,6 +463,7 @@ class ShipPlacement:
                 else:
                     print("Initialisation de game_state en mode solo")
                     self.game_state = GameState()
+                    self.game_state.is_solo_mode = True
                     self.current_player_index = 0
                     for i, ship in enumerate(self.player.ships):
                         if ship.is_placed():
@@ -471,32 +480,7 @@ class ShipPlacement:
                 traceback.print_exc()
                 self.status_text = "Erreur lors du lancement du jeu"
                 self.status_color = RED
-        elif self.game.network_mode == "local":
-            try:
-                if hasattr(self, 'game_state'):
-                    if self.current_player_index == 0 and not self.game_state.players[1].ready:
-                        self.current_player_index = 1
-                        self.player = self.game_state.players[self.current_player_index]
-                        self.title_text = self.title_font.render("Joueur 2 - Placez vos navires", True, WHITE)
-                        self.title_rect = self.title_text.get_rect(center=(SCREEN_WIDTH // 2, 50))
-                        self.status_text = "Joueur 2, placez vos navires"
-                        self.status_color = WHITE
-                        self.selected_ship_index = 0
-                        self.ship_rotation = True
-                        self.ship_preview = None
-                    else:
-                        self.game_state.player_ready(0)
-                        self.game_state.player_ready(1)
-                        self.game.change_screen("game_screen")
-                else:
-                    print("Erreur: game_state n'existe pas en mode local")
-            except Exception as e:
-                print(f"Erreur en mode local: {e}")
-                import traceback
-                traceback.print_exc()
-                self.status_text = "Erreur lors du lancement du jeu"
-                self.status_color = RED
-        
+            
     def _return_to_menu(self):
         """Retourner au menu principal"""
         if any(ship.is_placed() for ship in self.player.ships):

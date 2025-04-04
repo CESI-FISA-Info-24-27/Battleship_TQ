@@ -84,11 +84,24 @@ class MainScreen:
             self.join_button,
             self.quit_button
         ]
-        
-        # Animation d'onde
+
+        music_button_size = 40
+        music_button_x = SCREEN_WIDTH - music_button_size - 20
+        music_button_y = 20
+        self.music_button = Button(
+            music_button_x, music_button_y, music_button_size, music_button_size,
+            "🔊", self._toggle_music,
+            font_size=24, border_radius=20,
+            bg_color=DARK_BLUE, hover_color=LIGHT_BLUE
+        )
+
+        # Ajoutez le bouton à la liste des boutons
+        self.buttons.append(self.music_button)
+                
+         # Animation d'onde
         self.wave_offset = 0
         self.wave_speed = 0.5
-        
+                
         # Tentative de chargement de l'image de fond
         self.background = None
         try:
@@ -116,6 +129,10 @@ class MainScreen:
             
         # Animation de l'onde
         self.wave_offset = (self.wave_offset + self.wave_speed) % (SCREEN_WIDTH * 2)
+        
+        # Mettre à jour le texte du bouton de musique en fonction de l'état
+        if hasattr(self.music_button, 'text'):
+            self.music_button.text = "🔊" if hasattr(self.game, 'background_music_playing') and self.game.background_music_playing else "🔇"
             
     def render(self, screen):
         """Rendre l'écran de menu sur la surface donnée"""
@@ -139,7 +156,12 @@ class MainScreen:
             
         # Version
         screen.blit(self.version_text, self.version_rect)
-            
+    
+    def _toggle_music(self):
+        """Active ou désactive la musique de fond"""
+        if hasattr(self.game, 'toggle_music'):
+            self.game.toggle_music()
+                
     def _draw_waves(self, screen):
         """Dessiner un effet d'ondes pour le fond"""
         for y in range(0, SCREEN_HEIGHT, 40):

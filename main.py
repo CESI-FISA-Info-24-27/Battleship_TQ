@@ -14,6 +14,12 @@ class Game:
         pygame.init()
         pygame.display.set_caption(TITLE)
         
+        # Initialiser le mixer audio pour la musique et les effets sonores
+        try:
+            pygame.mixer.init()
+        except:
+            print("Avertissement: Impossible d'initialiser le système audio")
+        
         # Create the window
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         
@@ -36,6 +42,9 @@ class Game:
         self.client = None
         self.server = None
         
+        # Create asset folders if they don't exist
+        self._ensure_assets_folders()
+        
         # Initialize screens
         self.screens = {
             "main_screen": MainScreen(self),
@@ -45,8 +54,9 @@ class Game:
             "host_screen": HostScreen(self)  # New host screen
         }
         
-        # Create asset folders if they don't exist
-        self._ensure_assets_folders()
+        # Musique de fond
+        self.background_music_playing = False
+        self.play_background_music()
         
     def change_screen(self, screen_name):
         """
@@ -101,6 +111,10 @@ class Game:
         
     def _cleanup(self):
         """Clean up resources before quitting"""
+        # Arrêter la musique avant de quitter
+        if pygame.mixer.get_init():
+            pygame.mixer.music.stop()
+            
         if self.server:
             self.server.stop()
         if self.client:
@@ -129,6 +143,39 @@ class Game:
                     os.makedirs(folder)
                 except:
                     print(f"Unable to create folder: {folder}")
+    
+    def play_background_music(self):
+        """Charge et joue la musique de fond en boucle"""
+        if not pygame.mixer.get_init():
+            return
+            
+        try:
+            # Chemin vers le fichier de musique
+            music_path = os.path.join("assets", "sounds", "background_music.mp3")
+            
+            # Vérifier si le fichier existe
+            if os.path.exists(music_path):
+                pygame.mixer.music.load(music_path)
+                pygame.mixer.music.set_volume(0.5)  # Volume à 50%
+                pygame.mixer.music.play(-1)  # -1 signifie boucle infinie
+                self.background_music_playing = True
+                print("Musique de fond lancée")
+            else:
+                print(f"Fichier de musique introuvable: {music_path}")
+        except Exception as e:
+            print(f"Erreur lors du chargement de la musique: {e}")
+    
+    def toggle_music(self):
+        """Active ou désactive la musique de fond"""
+        if not pygame.mixer.get_init():
+            return
+            
+        if self.background_music_playing:
+            pygame.mixer.music.pause()
+            self.background_music_playing = False
+        else:
+            pygame.mixer.music.unpause()
+            self.background_music_playing = True
     
 if __name__ == "__main__":
     game = Game()
