@@ -22,23 +22,29 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="battleship_client.py" />
     <Compile Include="game\ai_player.py" />
     <Compile Include="game\constants.py" />
+    <Compile Include="game\game_handler.py" />
     <Compile Include="game\game_manager.py" />
     <Compile Include="game\game_state.py" />
     <Compile Include="game\grid.py" />
     <Compile Include="game\player.py" />
     <Compile Include="game\ship.py" />
     <Compile Include="game\__init__.py" />
+    <Compile Include="local_server.py" />
     <Compile Include="main.py" />
+    <Compile Include="network\battleship_connection.py" />
     <Compile Include="network\client.py" />
     <Compile Include="network\server.py" />
     <Compile Include="network\__init__.py" />
+    <Compile Include="online_client.py" />
     <Compile Include="ui\animation.py" />
     <Compile Include="ui\game_over_screen.py" />
     <Compile Include="ui\game_screen.py" />
     <Compile Include="ui\main_menu.py" />
     <Compile Include="ui\online_menu.py" />
+    <Compile Include="ui\online_menu_adapter.py" />
     <Compile Include="ui\ship_placement.py" />
     <Compile Include="ui\ui_elements.py" />
     <Compile Include="ui\__init__.py" />

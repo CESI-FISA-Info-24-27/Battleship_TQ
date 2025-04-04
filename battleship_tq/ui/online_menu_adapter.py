@@ -1,10 +1,9 @@
 ﻿import pygame
 import math
 import time
-import threading
 import json
+import threading
 import os
-import logging
 from game.constants import (
     SCREEN_WIDTH, SCREEN_HEIGHT, WHITE, GRID_BLUE, 
     MENU_PRINCIPAL, MENU_ONLINE, JEU_ONLINE, PLACEMENT_NAVIRES
@@ -12,11 +11,12 @@ from game.constants import (
 from ui.ui_elements import Button, TextBox, ProgressBar
 from network.battleship_connection import BattleshipConnection
 
-# Configuration du logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger('OnlineMenu')
-
-class OnlineMenu:
+class OnlineMenuAdapter:
+    """
+    Adaptateur pour l'intégration du serveur externe dans le menu en ligne
+    Cette classe fait le lien entre l'interface utilisateur existante et la nouvelle connexion
+    """
+    
     def __init__(self, game_manager):
         self.game_manager = game_manager
         self.title_font = pygame.font.SysFont("Arial", 48, bold=True)
@@ -26,9 +26,8 @@ class OnlineMenu:
         # Chargement de la configuration
         self.load_config()
         
-        # Client réseau - IMPORTANT: Créer une nouvelle instance
-        self.network_client = None
-        self.init_network_client()
+        # Connexion au serveur externe
+        self.connection = None
         
         # Boutons
         self.button_create = Button("Créer une partie", (SCREEN_WIDTH // 2, 300), (400, 70), 28)
@@ -79,23 +78,15 @@ class OnlineMenu:
         self.port = self.config.get("port", 5555)
         self.server_url = self.config.get("matchmaking_url", "https://rfosse.pythonanywhere.com")
     
-    def init_network_client(self):
-        """Initialise une nouvelle instance du client réseau"""
-        try:
-            if self.network_client:
-                try:
-                    self.network_client.disconnect()
-                except:
-                    pass
-            logger.info("Création d'une nouvelle instance de BattleshipConnection")
-            self.network_client = BattleshipConnection(self.username, self.port, self.server_url)
-        except Exception as e:
-            logger.error(f"Erreur lors de l'initialisation du client réseau: {e}")
-            self.error_message = f"Erreur réseau: {str(e)}"
-            self.error_time = time.time()
+    def initialize_connection(self):
+        """Initialise la connexion au serveur externe"""
+        if not self.connection:
+            self.connection = BattleshipConnection(self.username, self.port, self.server_url)
+            return self.connection is not None
+        return True
     
     def draw(self, screen, background_drawer):
-        """Dessine le menu en ligne"""
+        """Dessine le menu en ligne adapté au serveur externe"""
         # Fond animé de la mer
         background_drawer()
         
@@ -153,25 +144,19 @@ class OnlineMenu:
             
             # Statut de connexion
             status_text = "Non connecté"
-            if self.network_client and self.network_client.is_match_active:
-                status_text = f"Connecté à {self.network_client.opponent}"
-            elif self.waiting_connection:
-                status_text = "En attente d'un adversaire..."
-            
+            if self.connection:
+                status_text = f"En attente d'un adversaire..."
             status_color = (255, 255, 255)
-            if "Connecté" in status_text:
-                status_color = (50, 255, 100)
-            elif "attente" in status_text:
+            if "attente" in status_text:
                 status_color = (255, 255, 0)
             
             status_render = self.text_font.render(f"État: {status_text}", True, status_color)
             screen.blit(status_render, (SCREEN_WIDTH // 2 - status_render.get_width() // 2, 460))
             
             # Animation d'attente
-            if self.waiting_connection:
-                self.wait_counter = (self.wait_counter + 1) % 100
-                self.wait_progress.update(self.wait_counter)
-                self.wait_progress.draw(screen, True)
+            self.wait_counter = (self.wait_counter + 1) % 100
+            self.wait_progress.update(self.wait_counter)
+            self.wait_progress.draw(screen, True)
             
             # Bouton Annuler
             self.button_cancel.draw(screen, time.time())
@@ -207,10 +192,10 @@ class OnlineMenu:
             if self.error_message and time.time() - self.error_time < 5:
                 error_panel = pygame.Surface((800, 40), pygame.SRCALPHA)
                 error_panel.fill((255, 0, 0, 100))
-                screen.blit(error_panel, (SCREEN_WIDTH // 2 - 400, 470))
+                screen.blit(error_panel, (SCREEN_WIDTH // 2 - 400, 500))
                 
                 error = self.text_font.render(self.error_message, True, (255, 255, 255))
-                screen.blit(error, (SCREEN_WIDTH // 2 - error.get_width() // 2, 475))
+                screen.blit(error, (SCREEN_WIDTH // 2 - error.get_width() // 2, 505))
             
             # Boutons
             self.button_connect.draw(screen, time.time())
@@ -219,38 +204,26 @@ class OnlineMenu:
             # Animation de recherche
             if self.scanning:
                 self.scan_progress = (self.scan_progress + 1) % 100
-                progress_text = self.text_font.render(f"Recherche de la partie... {self.scan_progress}%", True, (50, 255, 100))
+                progress_text = self.text_font.render(f"Recherche de la partie en cours... {self.scan_progress}%", True, (50, 255, 100))
                 screen.blit(progress_text, (SCREEN_WIDTH // 2 - progress_text.get_width() // 2, 600))
     
     def handle_event(self, event):
-        """Gère les événements du menu en ligne"""
-        # Vérifier si la connexion est établie
-        if self.network_client and self.network_client.is_match_active:
-            # Si un match est actif, passer à l'écran de placement des navires
-            self.game_manager.network_client = self.network_client
-            self.game_manager.opponent = self.network_client.opponent
-            self.game_manager.is_match_active = True
-            self.game_manager.start_online_game(self.network_client.opponent)
-            return PLACEMENT_NAVIRES
-            
+        """Gère les événements du menu en ligne adapté"""
         # Gérer les clics de souris
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.state == "main":
                 if self.button_create.check_click():
-                    # Créer une nouvelle partie
-                    self.init_network_client()
-                    
-                    # Générer un code de partie unique
-                    self.game_code = f"{self.username}_{int(time.time())}"
-                    self.state = "create"
-                    self.wait_for_opponent()
+                    if self.initialize_connection():
+                        # Générer un code de partie
+                        self.game_code = f"{self.username}_{int(time.time())}"
+                        self.state = "create"
+                        self._wait_for_opponent()
                     return MENU_ONLINE
                 
                 if self.button_join.check_click():
-                    # Rejoindre une partie existante
-                    self.init_network_client()
-                    self.state = "join"
-                    self.game_code = ""
+                    if self.initialize_connection():
+                        self.state = "join"
+                        self.game_code = ""
                     return MENU_ONLINE
                 
                 if self.button_back.check_click():
@@ -262,28 +235,25 @@ class OnlineMenu:
                     self.state = "main"
                     self.game_code = ""
                     self.waiting_connection = False
-                    # Arrêter le thread d'attente
-                    if self.connection_thread and self.connection_thread.is_alive():
-                        # On ne peut pas vraiment arrêter un thread, mais on peut
-                        # arrêter la boucle dans le thread
-                        self.waiting_connection = False
                     return MENU_ONLINE
             
             elif self.state == "join":
-                # Vérifier si le clic est sur un des champs de texte
+                # Vérifier si le clic est sur les champs de texte
                 if self.code_box.rect.collidepoint(pygame.mouse.get_pos()):
                     self.active_box = "code"
                 
                 # Gestion des clics sur les boutons
                 if self.button_connect.check_click():
-                    if not self.game_code:
-                        self.error_message = "Veuillez entrer un code de match"
+                    if self.connection.join_match(self.game_code):
+                        # Mise à jour du game_manager
+                        self.game_manager.network_client = self.connection
+                        self.game_manager.opponent = self.connection.opponent
+                        self.game_manager.is_match_active = True
+                        self.game_manager.start_online_game(self.connection.opponent)
+                        return PLACEMENT_NAVIRES
+                    else:
+                        self.error_message = "Impossible de rejoindre cette partie"
                         self.error_time = time.time()
-                        return MENU_ONLINE
-                        
-                    self.scanning = True
-                    self.join_match()
-                    self.scanning = False
                     return MENU_ONLINE
                 
                 if self.button_cancel.check_click():
@@ -293,16 +263,22 @@ class OnlineMenu:
         
         # Gestion de la saisie de texte
         if event.type == pygame.KEYDOWN and self.state == "join":
+            # Changer de champ avec Tab
+            if event.key == pygame.K_TAB:
+                self.active_box = "ip" if self.active_box == "code" else "code"
+            
             # Tenter de se connecter avec Enter
-            if event.key == pygame.K_RETURN:
-                if not self.game_code:
-                    self.error_message = "Veuillez entrer un code de match"
+            elif event.key == pygame.K_RETURN:
+                if self.connection.join_match(self.game_code):
+                    # Mise à jour du game_manager
+                    self.game_manager.network_client = self.connection
+                    self.game_manager.opponent = self.connection.opponent
+                    self.game_manager.is_match_active = True
+                    self.game_manager.start_online_game(self.connection.opponent)
+                    return PLACEMENT_NAVIRES
+                else:
+                    self.error_message = "Impossible de rejoindre cette partie"
                     self.error_time = time.time()
-                    return MENU_ONLINE
-                
-                self.scanning = True
-                self.join_match()
-                self.scanning = False
                 return MENU_ONLINE
             
             # Gestion de la touche Escape pour annuler
@@ -318,58 +294,50 @@ class OnlineMenu:
                 elif event.unicode.isalnum() or event.unicode == '-' or event.unicode == '_':
                     self.game_code += event.unicode
         
+        # Vérifier si une connexion est établie depuis le mode création
+        if self.state == "create" and self.connection and self.connection.is_match_active:
+            # Mise à jour du game_manager
+            self.game_manager.network_client = self.connection
+            self.game_manager.opponent = self.connection.opponent
+            self.game_manager.is_match_active = True
+            self.game_manager.start_online_game(self.connection.opponent)
+            return PLACEMENT_NAVIRES
+            
         return MENU_ONLINE
     
-    def wait_for_opponent(self):
+    def _wait_for_opponent(self):
         """Attend qu'un adversaire rejoigne la partie"""
-        if not self.network_client:
-            self.error_message = "Erreur de connexion au serveur"
-            self.error_time = time.time()
-            self.state = "main"
+        # Générer un code et créer un match
+        if not self.connection:
             return
             
-        def create_and_wait():
+        def wait_thread():
             try:
-                logger.info(f"Création du match avec le code {self.game_code}")
-                self.waiting_connection = True
-                
-                # Créer la partie et attendre un adversaire
-                if self.network_client.create_match(self.game_code):
-                    logger.info(f"Match créé avec succès, adversaire: {self.network_client.opponent}")
-                else:
-                    logger.error("Échec de la création du match")
-                    self.error_message = "Impossible de créer le match"
+                # Créer une partie avec le code généré
+                success = self.connection.create_match(self.game_code)
+                if not success:
+                    self.error_message = "Impossible de créer la partie"
+                    self.error_time = time.time()
+                    self.state = "main"
+                    return
+                    
+                # Attendre l'adversaire
+                for _ in range(60):  # 60 secondes maximum
+                    time.sleep(1)
+                    if self.connection.is_match_active:
+                        # L'adversaire a rejoint, on peut commencer
+                        break
+                        
+                if not self.connection.is_match_active:
+                    # Timeout
+                    self.error_message = "Aucun adversaire n'a rejoint la partie"
                     self.error_time = time.time()
                     self.state = "main"
             except Exception as e:
-                logger.error(f"Erreur lors de la création du match: {e}")
                 self.error_message = f"Erreur: {str(e)}"
                 self.error_time = time.time()
                 self.state = "main"
-            finally:
-                self.waiting_connection = False
-        
+                
         # Lancer le thread d'attente
-        self.connection_thread = threading.Thread(target=create_and_wait, daemon=True)
-        self.connection_thread.start()
-    
-    def join_match(self):
-        """Rejoint un match existant"""
-        if not self.network_client:
-            self.error_message = "Erreur de connexion au serveur"
-            self.error_time = time.time()
-            return
-            
-        try:
-            # Tenter de rejoindre le match
-            if self.network_client.join_match(self.game_code):
-                logger.info(f"Match rejoint avec succès: {self.game_code}")
-                # La vérification au début de handle_event détectera la connexion
-            else:
-                logger.error("Échec de la jonction au match")
-                self.error_message = "Impossible de rejoindre le match"
-                self.error_time = time.time()
-        except Exception as e:
-            logger.error(f"Erreur lors de la jonction au match: {e}")
-            self.error_message = f"Erreur: {str(e)}"
-            self.error_time = time.time()
+        self.waiting_connection = True
+        threading.Thread(target=wait_thread, daemon=True).start()
